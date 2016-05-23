@@ -750,11 +750,13 @@ static inline int php_charmask(unsigned char *input, int len, char *mask TSRMLS_
 		c=*input;
 		if ((input+3 < end) && input[1] == '.' && input[2] == '.'
 				&& input[3] >= c) {
+			// 如果第二个参数是范围的参数，则起点到终点的值都设为1
 			memset(mask+c, 1, input[3] - c + 1);
 			input+=3;
 		} else if ((input+1 < end) && input[0] == '.' && input[1] == '.') {
 			/* Error, try to be as helpful as possible:
 			   (a range ending/starting with '.' won't be captured here) */
+			// 非法情况，没有起点值，没有终点值，错误顺序
 			if (end-len >= input) { /* there was no 'left' char */
 				php_error_docref(NULL TSRMLS_CC, E_WARNING, "Invalid '..'-range, no character to the left of '..'");
 				result = FAILURE;
@@ -775,6 +777,7 @@ static inline int php_charmask(unsigned char *input, int len, char *mask TSRMLS_
 			result = FAILURE;
 			continue;
 		} else {
+			// 非范围参数，将1映射到mask数组
 			mask[c]=1;
 		}
 	}
@@ -794,12 +797,21 @@ PHPAPI char *php_trim(char *c, int len, char *what, int what_len, zval *return_v
 	int trimmed = 0;
 	char mask[256];
 
+	// 根据what的值设置mask数组，mask是保存被过滤字符的hash数组
 	if (what) {
 		php_charmask((unsigned char*)what, what_len, mask TSRMLS_CC);
 	} else {
+		// 如果没有传递what，默认过滤\n\r\t\v\0
 		php_charmask((unsigned char*)" \n\r\t\v\0", 6, mask TSRMLS_CC);
 	}
 
+	// 一个优化，用位运算来做条件判断
+	// 1 && 1 == 1 左边需要过滤
+	// 2 && 1 == 0 左边不需要过滤
+	// 3 && 1 == 1 左边需要过滤
+	// 1 && 2 == 0 右边不需要过滤
+	// 2 && 2 == 1 右边需要过滤
+	// 3 && 2 == 1 右边需要过滤
 	if (mode & 1) {
 		for (i = 0; i < len; i++) {
 			if (mask[(unsigned char)c[i]]) {
