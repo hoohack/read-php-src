@@ -2437,54 +2437,75 @@ PHP_FUNCTION(array_replace_recursive)
 }
 /* }}} */
 
-/* {{{ proto array array_flip(array input)
-   Return array with key <-> value flipped */
-PHP_FUNCTION(array_flip)
+/* {{{ proto array array_keys(array input [, mixed search_value[, bool strict]])
+   Return just the keys from the input array, optionally only for the specified search_value */
+PHP_FUNCTION(array_keys)
 {
-    // 定义变量
-    zval *array, **entry, *data;
-    char *string_key;
-    uint str_key_len;
-    ulong num_key;
+    //变量定义
+    zval *input,                /* Input array */
+         *search_value = NULL,    /* Value to search for */
+         **entry,                /* An entry in the input array */
+           res,                    /* Result of comparison */
+          *new_val;                /* New value */
+    int    add_key;                /* Flag to indicate whether a key should be added */
+    char  *string_key;            /* String key */
+    uint   string_key_len;
+    ulong  num_key;                /* Numeric key */
+    zend_bool strict = 0;        /* do strict comparison */
     HashPosition pos;
+    int (*is_equal_func)(zval *, zval *, zval * TSRMLS_DC) = is_equal_function;
 
-    // 解析数组参数
-    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "a", &array) == FAILURE) {
+    //程序解析参数
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "a|zb", &input, &search_value, &strict) == FAILURE) {
         return;
     }
 
-    // 初始化返回数组
-    array_init_size(return_value, zend_hash_num_elements(Z_ARRVAL_P(array)));
+    // 如果strict是true，则设置is_equal_func为is_identical_function，即全等比较
+    if (strict) {
+        is_equal_func = is_identical_function;
+    }
 
-    // 重置指针
-    zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(array), &pos);
-    // 遍历每个元素，并执行键<->值交换操作
-    while (zend_hash_get_current_data_ex(Z_ARRVAL_P(array), (void **)&entry, &pos) == SUCCESS) {
-        // 初始化一个结构体
-        MAKE_STD_ZVAL(data);
-        // 将原数组的值赋值为新数组的键
-        switch (zend_hash_get_current_key_ex(Z_ARRVAL_P(array), &string_key, &str_key_len, &num_key, 1, &pos)) {
-            case HASH_KEY_IS_STRING:
-                ZVAL_STRINGL(data, string_key, str_key_len - 1, 0);
-                break;
-            case HASH_KEY_IS_LONG:
-                Z_TYPE_P(data) = IS_LONG;
-                Z_LVAL_P(data) = num_key;
-                break;
+    /* 根据search_vale初始化返回的数组大小 */
+    if (search_value != NULL) {
+        array_init(return_value);
+    } else {
+        array_init_size(return_value, zend_hash_num_elements(Z_ARRVAL_P(input)));
+    }
+    add_key = 1;
+
+    /* 遍历输入的数组参数，然后添加键值到返回的数组 */
+    zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(input), &pos);//重置指针
+    //循环遍历数组
+    while (zend_hash_get_current_data_ex(Z_ARRVAL_P(input), (void **)&entry, &pos) == SUCCESS) {
+        // 如果search_value不为空
+        if (search_value != NULL) {
+            // 判断search_value与当前的值是否相同，并将比较结果保存到add_key变量
+            is_equal_func(&res, search_value, *entry TSRMLS_CC);
+            add_key = zval_is_true(&res);
         }
 
-        // 将原数组的键赋值为新数组的值，如果有重复的，则使用新值覆盖旧值
-        if (Z_TYPE_PP(entry) == IS_LONG) {
-            zend_hash_index_update(Z_ARRVAL_P(return_value), Z_LVAL_PP(entry), &data, sizeof(data), NULL);
-        } else if (Z_TYPE_PP(entry) == IS_STRING) {
-            zend_symtable_update(Z_ARRVAL_P(return_value), Z_STRVAL_PP(entry), Z_STRLEN_PP(entry) + 1, &data, sizeof(data), NULL);
-        } else {
-            zval_ptr_dtor(&data); /* will free also zval structure */
-            php_error_docref(NULL TSRMLS_CC, E_WARNING, "Can only flip STRING and INTEGER values!");
+        if (add_key) {
+            // 创建一个zval结构体
+            MAKE_STD_ZVAL(new_val);
+
+            // 根据键值是字符串还是整型数字将值插入到return_value中
+            switch (zend_hash_get_current_key_ex(Z_ARRVAL_P(input), &string_key, &string_key_len, &num_key, 1, &pos)) {
+                case HASH_KEY_IS_STRING:
+                    ZVAL_STRINGL(new_val, string_key, string_key_len - 1, 0);
+                    // 此函数负责将值插入到return_value中，如果键值已存在，则使用新值更新对应的值，否则直接插入
+                    zend_hash_next_index_insert(Z_ARRVAL_P(return_value), &new_val, sizeof(zval *), NULL);
+                    break;
+
+                case HASH_KEY_IS_LONG:
+                    Z_TYPE_P(new_val) = IS_LONG;
+                    Z_LVAL_P(new_val) = num_key;
+                    zend_hash_next_index_insert(Z_ARRVAL_P(return_value), &new_val, sizeof(zval *), NULL);
+                    break;
+            }
         }
 
-        // 下一个
-        zend_hash_move_forward_ex(Z_ARRVAL_P(array), &pos);
+        // 移动到下一个
+        zend_hash_move_forward_ex(Z_ARRVAL_P(input), &pos);
     }
 }
 /* }}} */
@@ -2679,42 +2700,51 @@ PHP_FUNCTION(array_pad)
    Return array with key <-> value flipped */
 PHP_FUNCTION(array_flip)
 {
-	zval *array, **entry, *data;
-	char *string_key;
-	uint str_key_len;
-	ulong num_key;
-	HashPosition pos;
+    // 定义变量
+    zval *array, **entry, *data;
+    char *string_key;
+    uint str_key_len;
+    ulong num_key;
+    HashPosition pos;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "a", &array) == FAILURE) {
-		return;
-	}
+    // 解析数组参数
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "a", &array) == FAILURE) {
+        return;
+    }
 
-	array_init_size(return_value, zend_hash_num_elements(Z_ARRVAL_P(array)));
+    // 初始化返回数组
+    array_init_size(return_value, zend_hash_num_elements(Z_ARRVAL_P(array)));
 
-	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(array), &pos);
-	while (zend_hash_get_current_data_ex(Z_ARRVAL_P(array), (void **)&entry, &pos) == SUCCESS) {
-		MAKE_STD_ZVAL(data);
-		switch (zend_hash_get_current_key_ex(Z_ARRVAL_P(array), &string_key, &str_key_len, &num_key, 1, &pos)) {
-			case HASH_KEY_IS_STRING:
-				ZVAL_STRINGL(data, string_key, str_key_len - 1, 0);
-				break;
-			case HASH_KEY_IS_LONG:
-				Z_TYPE_P(data) = IS_LONG;
-				Z_LVAL_P(data) = num_key;
-				break;
-		}
+    // 重置指针
+    zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(array), &pos);
+    // 遍历每个元素，并执行键<->值交换操作
+    while (zend_hash_get_current_data_ex(Z_ARRVAL_P(array), (void **)&entry, &pos) == SUCCESS) {
+        // 初始化一个结构体
+        MAKE_STD_ZVAL(data);
+        // 将原数组的值赋值为新数组的键
+        switch (zend_hash_get_current_key_ex(Z_ARRVAL_P(array), &string_key, &str_key_len, &num_key, 1, &pos)) {
+            case HASH_KEY_IS_STRING:
+                ZVAL_STRINGL(data, string_key, str_key_len - 1, 0);
+                break;
+            case HASH_KEY_IS_LONG:
+                Z_TYPE_P(data) = IS_LONG;
+                Z_LVAL_P(data) = num_key;
+                break;
+        }
 
-		if (Z_TYPE_PP(entry) == IS_LONG) {
-			zend_hash_index_update(Z_ARRVAL_P(return_value), Z_LVAL_PP(entry), &data, sizeof(data), NULL);
-		} else if (Z_TYPE_PP(entry) == IS_STRING) {
-			zend_symtable_update(Z_ARRVAL_P(return_value), Z_STRVAL_PP(entry), Z_STRLEN_PP(entry) + 1, &data, sizeof(data), NULL);
-		} else {
-			zval_ptr_dtor(&data); /* will free also zval structure */
-			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Can only flip STRING and INTEGER values!");
-		}
+        // 将原数组的键赋值为新数组的值，如果有重复的，则使用新值覆盖旧值
+        if (Z_TYPE_PP(entry) == IS_LONG) {
+            zend_hash_index_update(Z_ARRVAL_P(return_value), Z_LVAL_PP(entry), &data, sizeof(data), NULL);
+        } else if (Z_TYPE_PP(entry) == IS_STRING) {
+            zend_symtable_update(Z_ARRVAL_P(return_value), Z_STRVAL_PP(entry), Z_STRLEN_PP(entry) + 1, &data, sizeof(data), NULL);
+        } else {
+            zval_ptr_dtor(&data); /* will free also zval structure */
+            php_error_docref(NULL TSRMLS_CC, E_WARNING, "Can only flip STRING and INTEGER values!");
+        }
 
-		zend_hash_move_forward_ex(Z_ARRVAL_P(array), &pos);
-	}
+        // 下一个
+        zend_hash_move_forward_ex(Z_ARRVAL_P(array), &pos);
+    }
 }
 /* }}} */
 
