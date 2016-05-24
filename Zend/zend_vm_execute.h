@@ -33620,6 +33620,7 @@ static int ZEND_FASTCALL  ZEND_ISSET_ISEMPTY_VAR_SPEC_CV_VAR_HANDLER(ZEND_OPCODE
 
 	}
 
+	// isset和empty判断
 	if (opline->extended_value & ZEND_ISSET) {
 		if (isset && Z_TYPE_PP(value) != IS_NULL) {
 			ZVAL_BOOL(&EX_T(opline->result.var).tmp_var, 1);

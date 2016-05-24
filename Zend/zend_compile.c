@@ -5942,6 +5942,7 @@ void zend_do_isset_or_isempty(int type, znode *result, znode *variable TSRMLS_DC
 	zend_check_writable_variable(variable);
 
 	if (variable->op_type == IS_CV) {
+		// 编译时期的变量，缓存优化
 		last_op = get_next_op(CG(active_op_array) TSRMLS_CC);
 		last_op->opcode = ZEND_ISSET_ISEMPTY_VAR;
 		SET_NODE(last_op->op1, variable);

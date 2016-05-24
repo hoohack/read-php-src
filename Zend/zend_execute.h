@@ -109,6 +109,7 @@ static zend_always_inline int i_zend_is_true(zval *op)
 		case IS_LONG:
 		case IS_BOOL:
 		case IS_RESOURCE:
+			// empty参数为整数时非0的话就为false
 			result = (Z_LVAL_P(op)?1:0);
 			break;
 		case IS_DOUBLE:
@@ -117,12 +118,14 @@ static zend_always_inline int i_zend_is_true(zval *op)
 		case IS_STRING:
 			if (Z_STRLEN_P(op) == 0
 				|| (Z_STRLEN_P(op)==1 && Z_STRVAL_P(op)[0]=='0')) {
+				// empty("0") == true
 				result = 0;
 			} else {
 				result = 1;
 			}
 			break;
 		case IS_ARRAY:
+			// empty(array) 是根据数组的数量来判断
 			result = (zend_hash_num_elements(Z_ARRVAL_P(op))?1:0);
 			break;
 		case IS_OBJECT:
