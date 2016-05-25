@@ -1964,6 +1964,7 @@ PHP_FUNCTION(array_push)
 			Z_DELREF_P(new_var);
 			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Cannot add element to the array as the next element is already occupied");
 			efree(args);
+			
 			RETURN_FALSE;
 		}
 	}
