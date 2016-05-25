@@ -1860,6 +1860,7 @@ PHPAPI HashTable* php_splice(HashTable *in_hash, int offset, int length, zval **
 	num_in = zend_hash_num_elements(in_hash);
 
 	/* Clamp the offset.. */
+	/* 下面两段if语句检查offset和length是否为合法值 */
 	if (offset > num_in) {
 		offset = num_in;
 	} else if (offset < 0 && (offset = (num_in + offset)) < 0) {
@@ -1878,6 +1879,7 @@ PHPAPI HashTable* php_splice(HashTable *in_hash, int offset, int length, zval **
 	zend_hash_init(out_hash, (length > 0 ? num_in - length : 0) + list_count, NULL, ZVAL_PTR_DTOR, 0);
 
 	/* Start at the beginning of the input hash and copy entries to output hash until offset is reached */
+	/* 将input_hash的第一个元素开始到offset拷贝到output hash哈希表中 */
 	for (pos = 0, p = in_hash->pListHead; pos < offset && p ; pos++, p = p->pListNext) {
 		/* Get entry and increase reference count */
 		entry = *((zval **)p->pData);
@@ -1892,6 +1894,7 @@ PHPAPI HashTable* php_splice(HashTable *in_hash, int offset, int length, zval **
 	}
 
 	/* If hash for removed entries exists, go until offset+length and copy the entries to it */
+	/* 如果有需要删除的元素，移动pos指针，直到pos等于offset+length然后复制所有元素到removed哈希表（在array_splice函数中removed被返回） */
 	if (removed != NULL) {
 		for ( ; pos < offset + length && p; pos++, p = p->pListNext) {
 			entry = *((zval **)p->pData);
@@ -1909,6 +1912,7 @@ PHPAPI HashTable* php_splice(HashTable *in_hash, int offset, int length, zval **
 	/* If there are entries to insert.. */
 	if (list != NULL) {
 		/* ..for each one, create a new zval, copy entry into it and copy it into the output hash */
+		/* 拷贝list中的元素到out_hash中，list即为要插入的数组 */
 		for (i = 0; i < list_count; i++) {
 			entry = *list[i];
 			Z_ADDREF_P(entry);
@@ -1917,6 +1921,7 @@ PHPAPI HashTable* php_splice(HashTable *in_hash, int offset, int length, zval **
 	}
 
 	/* Copy the remaining input hash entries to the output hash */
+	/* 拷贝剩余的input_hash中的元素到out_hash中 */
 	for ( ; p ; p = p->pListNext) {
 		entry = *((zval **)p->pData);
 		Z_ADDREF_P(entry);
@@ -1947,10 +1952,13 @@ PHP_FUNCTION(array_push)
 		return;
 	}
 
-	/* For each subsequent argument, make it a reference, increase refcount, and add it to the end of the array */
+	/* 
+	* 对每一个参数，让其变成引用，增加它的引用数，然后添加它到数组的尾部
+	* For each subsequent argument, make it a reference, increase refcount, and add it to the end of the array 
+	*/
 	for (i = 0; i < argc; i++) {
 		new_var = *args[i];
-		Z_ADDREF_P(new_var);
+		Z_ADDREF_P(new_var); // 增加引用数
 
 		if (zend_hash_next_index_insert(Z_ARRVAL_P(stack), &new_var, sizeof(zval *), NULL) == FAILURE) {
 			Z_DELREF_P(new_var);
@@ -1961,6 +1969,7 @@ PHP_FUNCTION(array_push)
 	}
 
 	/* Clean up and return the number of values in the stack */
+	/* 清除args数组和返回插入元素后数组元素的数量 */
 	efree(args);
 	RETVAL_LONG(zend_hash_num_elements(Z_ARRVAL_P(stack)));
 }
@@ -2060,14 +2069,15 @@ PHP_FUNCTION(array_unshift)
 
 	/* Use splice to insert the elements at the beginning. Destroy old
 	 * hashtable and replace it with new one */
+	/* 调用splice函数将元素插入到头部(效果类似javascript中的splice函数)，用新的哈希表替换旧的哈希表并将其销毁 */
 	new_hash = php_splice(Z_ARRVAL_P(stack), 0, 0, &args[0], argc, NULL);
 	old_hash = *Z_ARRVAL_P(stack);
 	if (Z_ARRVAL_P(stack) == &EG(symbol_table)) {
-		zend_reset_all_cv(&EG(symbol_table) TSRMLS_CC);
+		zend_reset_all_cv(&EG(symbol_table) TSRMLS_CC); // 重置哈希表的内部指针
 	}
-	*Z_ARRVAL_P(stack) = *new_hash;
-	FREE_HASHTABLE(new_hash);
-	zend_hash_destroy(&old_hash);
+	*Z_ARRVAL_P(stack) = *new_hash; // stack指向新的哈希表，stack是结果数组
+	FREE_HASHTABLE(new_hash); // 释放新的哈希表的空间
+	zend_hash_destroy(&old_hash); // 销毁旧的哈希表
 
 	/* Clean up and return the number of elements in the stack */
 	efree(args);
