@@ -372,18 +372,22 @@ ZEND_API int _zend_hash_index_update_or_next_insert(HashTable *ht, ulong h, void
 	TSRMLS_FETCH();
 #endif
 
-	IS_CONSISTENT(ht);
+	IS_CONSISTENT(ht); // 调试信息
 	CHECK_INIT(ht);
 
+	// 如果是新增元素，则h等于下一个数字索引的位置
 	if (flag & HASH_NEXT_INSERT) {
 		h = ht->nNextFreeElement;
 	}
+	// 计算键值在HashTable中的存储位置为nIndex  
 	nIndex = h & ht->nTableMask;
 
-	p = ht->arBuckets[nIndex];
+	p = ht->arBuckets[nIndex];/* 取得索引对应的Bucket的指针 */
+	// 循环Bucket中含有nIndex键值的链表
 	while (p != NULL) {
-		if ((p->nKeyLength == 0) && (p->h == h)) {
-			if (flag & HASH_NEXT_INSERT || flag & HASH_ADD) {
+		// p 不为NULL说明Bucket中存在键值为nIndex的元素
+		if ((p->nKeyLength == 0) && (p->h == h)) { // 如果是数字键值且键值相同
+			if (flag & HASH_NEXT_INSERT || flag & HASH_ADD) { // 如果是新增元素，则插入失败
 				return FAILURE;
 			}
 			HANDLE_BLOCK_INTERRUPTIONS();
@@ -394,45 +398,51 @@ ZEND_API int _zend_hash_index_update_or_next_insert(HashTable *ht, ulong h, void
 				return FAILURE;
 			}
 #endif
-			if (ht->pDestructor) {
+			// 上面的代码return ，说明是更新Bucket中已有键值元素值
+			if (ht->pDestructor) { // 如果数据元素存在，则将原来的数据销毁
 				ht->pDestructor(p->pData);
 			}
-			UPDATE_DATA(ht, p, pData, nDataSize);
+			UPDATE_DATA(ht, p, pData, nDataSize); // 更新数据值
 			HANDLE_UNBLOCK_INTERRUPTIONS();
 			if ((long)h >= (long)ht->nNextFreeElement) {
 				ht->nNextFreeElement = h < LONG_MAX ? h + 1 : LONG_MAX;
 			}
+			// 如果需要返回更新值，则将返回值赋值给pDest
 			if (pDest) {
 				*pDest = p->pData;
 			}
 			return SUCCESS;
 		}
+		// 移动到链表的下一个元素
 		p = p->pNext;
 	}
+	// 如果是新增，为新增元素分配一个Bucket空间
 	p = (Bucket *) pemalloc_rel(sizeof(Bucket), ht->persistent);
 	if (!p) {
 		return FAILURE;
 	}
+	// 赋值
 	p->arKey = NULL;
 	p->nKeyLength = 0; /* Numeric indices are marked by making the nKeyLength == 0 */
 	p->h = h;
 	INIT_DATA(ht, p, pData, nDataSize);
+	// 如果需要返回更新值，则将返回值赋值给pDest
 	if (pDest) {
 		*pDest = p->pData;
 	}
 
-	CONNECT_TO_BUCKET_DLLIST(p, ht->arBuckets[nIndex]);
+	CONNECT_TO_BUCKET_DLLIST(p, ht->arBuckets[nIndex]); // 将Bucket加入到对应的桶双向链表中
 
 	HANDLE_BLOCK_INTERRUPTIONS();
 	ht->arBuckets[nIndex] = p;
-	CONNECT_TO_GLOBAL_DLLIST(p, ht);
+	CONNECT_TO_GLOBAL_DLLIST(p, ht); // 将新的Bucket元素添加到哈希表的双向链表中
 	HANDLE_UNBLOCK_INTERRUPTIONS();
 
 	if ((long)h >= (long)ht->nNextFreeElement) {
 		ht->nNextFreeElement = h < LONG_MAX ? h + 1 : LONG_MAX;
 	}
 	ht->nNumOfElements++;
-	ZEND_HASH_IF_FULL_DO_RESIZE(ht);
+	ZEND_HASH_IF_FULL_DO_RESIZE(ht);  /* 如果此时数组的容量满了，则重新分配空间。*/
 	return SUCCESS;
 }
 
