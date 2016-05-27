@@ -2015,7 +2015,7 @@ static void _phpi_pop(INTERNAL_FUNCTION_PARAMETERS, int off_the_end)
 	}
 
 	/* If we did a shift... re-index like it did before */
-	/* 如果是array_unshift，需要重置数组下标 */
+	/* 如果是array_shift，需要重置数组下标 */
 	if (!off_the_end) {
 		unsigned int k = 0;
 		int should_rehash = 0;
