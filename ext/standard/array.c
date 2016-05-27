@@ -1989,20 +1989,24 @@ static void _phpi_pop(INTERNAL_FUNCTION_PARAMETERS, int off_the_end)
 		return;
 	}
 
-	if (zend_hash_num_elements(Z_ARRVAL_P(stack)) == 0) {
+	if (zend_hash_num_elements(Z_ARRVAL_P(stack)) == 0) {// 如果要删除数组元素个数为0，则返回
 		return;
 	}
 
 	/* Get the first or last value and copy it into the return value */
-	if (off_the_end) {
+	if (off_the_end) { // array_pop
+		// 移动内部指针到stack的尾部指针
 		zend_hash_internal_pointer_end(Z_ARRVAL_P(stack));
-	} else {
+	} else { // array_shift
+		// 移动内部指针到stack的头指针
 		zend_hash_internal_pointer_reset(Z_ARRVAL_P(stack));
 	}
+	// 设置返回值
 	zend_hash_get_current_data(Z_ARRVAL_P(stack), (void **)&val);
 	RETVAL_ZVAL(*val, 1, 0);
 
 	/* Delete the first or last value */
+	/* 删除元素操作 */
 	zend_hash_get_current_key_ex(Z_ARRVAL_P(stack), &key, &key_len, &index, 0, NULL);
 	if (key && Z_ARRVAL_P(stack) == &EG(symbol_table)) {
 		zend_delete_global_variable(key, key_len - 1 TSRMLS_CC);
@@ -2011,6 +2015,7 @@ static void _phpi_pop(INTERNAL_FUNCTION_PARAMETERS, int off_the_end)
 	}
 
 	/* If we did a shift... re-index like it did before */
+	/* 如果是array_unshift，需要重置数组下标 */
 	if (!off_the_end) {
 		unsigned int k = 0;
 		int should_rehash = 0;
@@ -2027,10 +2032,11 @@ static void _phpi_pop(INTERNAL_FUNCTION_PARAMETERS, int off_the_end)
 			p = p->pListNext;
 		}
 		Z_ARRVAL_P(stack)->nNextFreeElement = k;
-		if (should_rehash) {
+		if (should_rehash) { // 重新哈希
 			zend_hash_rehash(Z_ARRVAL_P(stack));
 		}
 	} else if (!key_len && index >= Z_ARRVAL_P(stack)->nNextFreeElement - 1) {
+		/* 如果是array_shift，则只需要修改下一个数字索引的位置 */
 		Z_ARRVAL_P(stack)->nNextFreeElement = Z_ARRVAL_P(stack)->nNextFreeElement - 1;
 	}
 
@@ -2070,7 +2076,7 @@ PHP_FUNCTION(array_unshift)
 
 	/* Use splice to insert the elements at the beginning. Destroy old
 	 * hashtable and replace it with new one */
-	/* 调用splice函数将元素插入到头部(效果类似javascript中的splice函数)，用新的哈希表替换旧的哈希表并将其销毁 */
+	/* 调用splice函数将元素插入到数组头部(效果类似javascript中的splice函数)，用新的哈希表替换旧的哈希表并将其销毁 */
 	new_hash = php_splice(Z_ARRVAL_P(stack), 0, 0, &args[0], argc, NULL);
 	old_hash = *Z_ARRVAL_P(stack);
 	if (Z_ARRVAL_P(stack) == &EG(symbol_table)) {
