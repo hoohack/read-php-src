@@ -314,9 +314,11 @@ PHP_FUNCTION(count)
 
 	switch (Z_TYPE_P(array)) {
 		case IS_NULL:
+			// 数组为空直接返回0
 			RETURN_LONG(0);
 			break;
 		case IS_ARRAY:
+			// 参数类型是数组调用php_count_recursive函数计算数组元素个数，mode参数表示是否递归计算
 			RETURN_LONG (php_count_recursive (array, mode TSRMLS_CC));
 			break;
 		case IS_OBJECT: {
@@ -324,14 +326,16 @@ PHP_FUNCTION(count)
 			zval *retval;
 #endif
 			/* first, we check if the handler is defined */
+			// TODO
 			if (Z_OBJ_HT_P(array)->count_elements) {
 				RETVAL_LONG(1);
 				if (SUCCESS == Z_OBJ_HT(*array)->count_elements(array, &Z_LVAL_P(return_value) TSRMLS_CC)) {
 					return;
 				}
 			}
-#ifdef HAVE_SPL
+#ifdef HAVE_SPL 
 			/* if not and the object implements Countable we call its count() method */
+			/* 否则，如果对象实现了Countable函数，则调用Countable的count方法 */
 			if (Z_OBJ_HT_P(array)->get_class_entry && instanceof_function(Z_OBJCE_P(array), spl_ce_Countable TSRMLS_CC)) {
 				zend_call_method_with_0_params(&array, NULL, NULL, "count", &retval);
 				if (retval) {
@@ -344,6 +348,7 @@ PHP_FUNCTION(count)
 #endif
 		}
 		default:
+			// 其他类型比如整型数字或字符串，或者上面两个if判断结束后的普通对象，返回1
 			RETURN_LONG(1);
 			break;
 	}
