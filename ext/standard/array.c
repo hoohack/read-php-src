@@ -291,9 +291,9 @@ static int php_count_recursive(zval *array, long mode TSRMLS_DC) /* {{{ */
 				zend_hash_get_current_data_ex(Z_ARRVAL_P(array), (void **) &element, &pos) == SUCCESS;
 				zend_hash_move_forward_ex(Z_ARRVAL_P(array), &pos)
 			) {
-				Z_ARRVAL_P(array)->nApplyCount++;
+				Z_ARRVAL_P(array)->nApplyCount++; // 增加递归次数
 				cnt += php_count_recursive(*element, COUNT_RECURSIVE TSRMLS_CC);
-				Z_ARRVAL_P(array)->nApplyCount--;
+				Z_ARRVAL_P(array)->nApplyCount--; // 递归结束后将递归次数减一
 			}
 		}
 	}
