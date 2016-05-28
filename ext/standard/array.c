@@ -277,13 +277,14 @@ static int php_count_recursive(zval *array, long mode TSRMLS_DC) /* {{{ */
 	zval **element;
 
 	if (Z_TYPE_P(array) == IS_ARRAY) {
-		if (Z_ARRVAL_P(array)->nApplyCount > 1) {
+		if (Z_ARRVAL_P(array)->nApplyCount > 1) {// 如果当前hash Bucket被递归访问的次数大于一，说明重复递归，返回错误
 			php_error_docref(NULL TSRMLS_CC, E_WARNING, "recursion detected");
 			return 0;
 		}
 
+		// 先计算最外面的元素个数
 		cnt = zend_hash_num_elements(Z_ARRVAL_P(array));
-		if (mode == COUNT_RECURSIVE) {
+		if (mode == COUNT_RECURSIVE) { // 如果有递归选项则递归计算数组的大小
 			HashPosition pos;
 
 			for (zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(array), &pos);
