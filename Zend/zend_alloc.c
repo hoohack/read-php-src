@@ -2584,6 +2584,7 @@ ZEND_API char *_estrdup(const char *s ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
 	return p;
 }
 
+// 分配length+1个字节的内存并且从s处复制length个字节到最新分配的块。
 ZEND_API char *_estrndup(const char *s, uint length ZEND_FILE_LINE_DC ZEND_FILE_LINE_ORIG_DC)
 {
 	char *p;

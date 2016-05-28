@@ -1386,6 +1386,7 @@ PHPAPI char *php_strtoupper(char *s, size_t len)
 	c = (unsigned char *)s;
 	e = (unsigned char *)c+len;
 
+	// 逐个转换为大写字符
 	while (c < e) {
 		*c = toupper(*c);
 		c++;
@@ -1405,6 +1406,7 @@ PHP_FUNCTION(strtoupper)
 		return;
 	}
 
+	// 复制一个字符串
 	arg = estrndup(arg, arglen);
 	php_strtoupper(arg, arglen);
 	RETURN_STRINGL(arg, arglen, 0);
@@ -1420,6 +1422,7 @@ PHPAPI char *php_strtolower(char *s, size_t len)
 	c = (unsigned char *)s;
 	e = c+len;
 
+	// 遍历s，逐个变为小写
 	while (c < e) {
 		*c = tolower(*c);
 		c++;
@@ -1439,6 +1442,7 @@ PHP_FUNCTION(strtolower)
 		return;
 	}
 
+	// 复制一个字符串
 	str = estrndup(str, arglen);
 	php_strtolower(str, arglen);
 	RETURN_STRINGL(str, arglen, 0);
