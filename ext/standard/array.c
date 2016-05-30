@@ -327,7 +327,8 @@ PHP_FUNCTION(count)
 			zval *retval;
 #endif
 			/* first, we check if the handler is defined */
-			// TODO
+			// 首先检查handler是否被定义
+			// count_elements是对象结构体的一个扩展字段，如果某个对象表现得像数组一样（array-like object），那么进入此条件判断，如实现的类继承PHP的ArrayObject类
 			if (Z_OBJ_HT_P(array)->count_elements) {
 				RETVAL_LONG(1);
 				if (SUCCESS == Z_OBJ_HT(*array)->count_elements(array, &Z_LVAL_P(return_value) TSRMLS_CC)) {
@@ -336,7 +337,7 @@ PHP_FUNCTION(count)
 			}
 #ifdef HAVE_SPL 
 			/* if not and the object implements Countable we call its count() method */
-			/* 否则，如果对象实现了Countable函数，则调用Countable的count方法 */
+			/* 否则，如果对象实现了Countable接口，则调用Countable的count方法 */
 			if (Z_OBJ_HT_P(array)->get_class_entry && instanceof_function(Z_OBJCE_P(array), spl_ce_Countable TSRMLS_CC)) {
 				zend_call_method_with_0_params(&array, NULL, NULL, "count", &retval);
 				if (retval) {
