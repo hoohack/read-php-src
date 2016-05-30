@@ -2547,14 +2547,16 @@ PHP_FUNCTION(array_values)
 	}
 
 	/* Initialize return array */
+	/* 使用input数组的元素个数初始化一个数组 */
 	array_init_size(return_value, zend_hash_num_elements(Z_ARRVAL_P(input)));
 
 	/* Go through input array and add values to the return array */
-	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(input), &pos);
-	while (zend_hash_get_current_data_ex(Z_ARRVAL_P(input), (void **)&entry, &pos) == SUCCESS) {
-		zval_add_ref(entry);
-		zend_hash_next_index_insert(Z_ARRVAL_P(return_value), entry, sizeof(zval *), NULL);
-		zend_hash_move_forward_ex(Z_ARRVAL_P(input), &pos);
+	/* 遍历input数组，然后把数组的值添加到返回数组里 */
+	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(input), &pos); // 重置内部指针，指向input数组的第一个元素
+	while (zend_hash_get_current_data_ex(Z_ARRVAL_P(input), (void **)&entry, &pos) == SUCCESS) { // 获取当前指针指向的元素
+		zval_add_ref(entry); // 增加引用计数
+		zend_hash_next_index_insert(Z_ARRVAL_P(return_value), entry, sizeof(zval *), NULL); // 插入当前元素到return_value
+		zend_hash_move_forward_ex(Z_ARRVAL_P(input), &pos); // 指针移动到下一个元素
 	}
 }
 /* }}} */
