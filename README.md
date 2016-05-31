@@ -12,10 +12,30 @@ PHP源码注解
         *   [array_flip](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2718)
 
         *   [array_push](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1940)
+        
+        *   [array_pop](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2056)
 
-        *   [array_push](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2063)
+        *   [array_unshift](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2072)
+        
+        *   [array_shift](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2064)
 
         *   [php_splice](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1845)
+        
+        *   [_phpi_pop](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1987)
+        
+        *   [count](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L307)
+
+        *   [php_count_recursive](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L274)
+        
+        *   [array_values](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2539)
+        
+        *   [array_key_exists](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L4421)
+        
+        *   [in_array](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1255)
+        
+        *   [array_search](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1263)
+        
+        *   [php_search_array](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1203)
 
     *   字符串相关
 
@@ -38,6 +58,10 @@ PHP源码注解
         *   [rtrim](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L794)
 
         *   [ltrim](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L794)
+        
+        *   [strtolower](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1436)
+        
+        *   [strtoupper](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1400)
 
 *   相关文章介绍
 

@@ -1221,7 +1221,7 @@ static void php_search_array(INTERNAL_FUNCTION_PARAMETERS, int behavior) /* {{{ 
 		return;
 	}
 
-	if (strict) {
+	if (strict) { // 严格模式
 		is_equal_func = is_identical_function;
 	}
 
@@ -1229,9 +1229,9 @@ static void php_search_array(INTERNAL_FUNCTION_PARAMETERS, int behavior) /* {{{ 
 	while (zend_hash_get_current_data_ex(Z_ARRVAL_P(array), (void **)&entry, &pos) == SUCCESS) {
 		is_equal_func(&res, value, *entry TSRMLS_CC);
 		if (Z_LVAL(res)) {
-			if (behavior == 0) {
+			if (behavior == 0) { // in_array
 				RETURN_TRUE;
-			} else {
+			} else { // array_search
 				/* Return current key */
 				switch (zend_hash_get_current_key_ex(Z_ARRVAL_P(array), &string_key, &str_key_len, &num_key, 0, &pos)) {
 					case HASH_KEY_IS_STRING:
@@ -4429,11 +4429,13 @@ PHP_FUNCTION(array_key_exists)
 
 	switch (Z_TYPE_P(key)) {
 		case IS_STRING:
+			// 字符串键值
 			if (zend_symtable_exists(array, Z_STRVAL_P(key), Z_STRLEN_P(key) + 1)) {
 				RETURN_TRUE;
 			}
 			RETURN_FALSE;
 		case IS_LONG:
+			// 数字键值
 			if (zend_hash_index_exists(array, Z_LVAL_P(key))) {
 				RETURN_TRUE;
 			}
