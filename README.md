@@ -36,6 +36,10 @@ PHP源码注解
         *   [array_search](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1263)
         
         *   [php_search_array](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1203)
+        
+        *   [array_slice](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2184)
+        
+        *   [array_splice](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2102)
 
     *   字符串相关
 
@@ -76,3 +80,9 @@ PHP源码注解
     *   [[PHP源码阅读]trim、rtrim、ltrim函数](http://www.hoohack.me/2016/05/24/php-source-code-trim-ltrim-rtrim)
 
     *   [[PHP源码阅读]empty和isset函数](http://www.hoohack.me/2016/05/26/php-source-code-empty-isset)
+    
+    *   [[PHP源码阅读]array_push和array_unshift函数](http://www.hoohack.me/2016/05/27/php-source-code-array-push-array-unshift)
+    
+    *   [[PHP源码阅读]array_pop和array_shift函数](http://www.hoohack.me/2016/05/30/php-source-code-array-pop-array-shift)
+    
+    *   [[PHP源码阅读]count函数](http://www.hoohack.me/2016/05/31/php-source-code-count)
