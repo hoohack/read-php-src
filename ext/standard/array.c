@@ -2128,6 +2128,7 @@ PHP_FUNCTION(array_splice)
 
 	if (ZEND_NUM_ARGS() == 4) {
 		/* Make sure the last argument, if passed, is an array */
+		/* 确保最后一个参数是数组 */
 		convert_to_array(repl_array);
 
 		/* Create the array of replacement elements */
@@ -2140,7 +2141,7 @@ PHP_FUNCTION(array_splice)
 
 	/* Don't create the array of removed elements if it's not going
 	 * to be used; e.g. only removing and/or replacing elements */
-	if (return_value_used) {
+	if (return_value_used) { // 如果有用到函数返回值则创建返回数组，否则不创建返回数组
 		int size = length;
 
 		/* Clamp the offset.. */
@@ -2163,6 +2164,7 @@ PHP_FUNCTION(array_splice)
 	}
 
 	/* Perform splice */
+	/* php_splice函数实现splice功能 */
 	new_hash = php_splice(Z_ARRVAL_P(array), offset, length, repl, repl_num, rem_hash);
 
 	/* Replace input array's hashtable with the new one */
@@ -2214,7 +2216,7 @@ PHP_FUNCTION(array_slice)
 	}
 
 	/* Clamp the offset.. */
-	if (offset > num_in) {
+	if (offset > num_in) { // 如果offset大于数组元素个数，返回NULL。
 		array_init(return_value);
 		return;
 	} else if (offset < 0 && (offset = (num_in + offset)) < 0) {
@@ -2237,13 +2239,15 @@ PHP_FUNCTION(array_slice)
 
 	/* Start at the beginning and go until we hit offset */
 	pos = 0;
-	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(input), &hpos);
+	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(input), &hpos); // 重置内部指针
+	// 从0开始遍历数组直到遇到offset
 	while (pos < offset && zend_hash_get_current_data_ex(Z_ARRVAL_P(input), (void **)&entry, &hpos) == SUCCESS) {
 		pos++;
 		zend_hash_move_forward_ex(Z_ARRVAL_P(input), &hpos);
 	}
 
 	/* Copy elements from input array to the one that's returned */
+	/* 拷贝剩下的数组元素到返回数组 */
 	while (pos < offset + length && zend_hash_get_current_data_ex(Z_ARRVAL_P(input), (void **)&entry, &hpos) == SUCCESS) {
 
 		zval_add_ref(entry);
@@ -2254,7 +2258,7 @@ PHP_FUNCTION(array_slice)
 				break;
 
 			case HASH_KEY_IS_LONG:
-				if (preserve_keys) {
+				if (preserve_keys) { // 不对数字键值重新排序
 					zend_hash_index_update(Z_ARRVAL_P(return_value), num_key, entry, sizeof(zval *), NULL);
 				} else {
 					zend_hash_next_index_insert(Z_ARRVAL_P(return_value), entry, sizeof(zval *), NULL);
