@@ -2283,16 +2283,18 @@ PHPAPI int php_array_merge(HashTable *dest, HashTable *src, int recursive TSRMLS
 	while (zend_hash_get_current_data_ex(src, (void **)&src_entry, &pos) == SUCCESS) {
 		switch (zend_hash_get_current_key_ex(src, &string_key, &string_key_len, &num_key, 0, &pos)) {
 			case HASH_KEY_IS_STRING:
-				if (recursive && zend_hash_find(dest, string_key, string_key_len, (void **)&dest_entry) == SUCCESS) {
+				// 仅当键值是字符串的时候才会进行递归合并
+				if (recursive && zend_hash_find(dest, string_key, string_key_len, (void **)&dest_entry) == SUCCESS) { //array_recursive
 					HashTable *thash = Z_TYPE_PP(dest_entry) == IS_ARRAY ? Z_ARRVAL_PP(dest_entry) : NULL;
 
 					if ((thash && thash->nApplyCount > 1) || (*src_entry == *dest_entry && Z_ISREF_PP(dest_entry) && (Z_REFCOUNT_PP(dest_entry) % 2))) {
-						php_error_docref(NULL TSRMLS_CC, E_WARNING, "recursion detected");
+						php_error_docref(NULL TSRMLS_CC, E_WARNING, "recursion detected"); // 多次递归
 						return 0;
 					}
 					SEPARATE_ZVAL(dest_entry);
 					SEPARATE_ZVAL(src_entry);
 
+					// TODO
 					if (Z_TYPE_PP(dest_entry) == IS_NULL) {
 						convert_to_array_ex(dest_entry);
 						add_next_index_null(*dest_entry);
@@ -2310,16 +2312,16 @@ PHPAPI int php_array_merge(HashTable *dest, HashTable *src, int recursive TSRMLS
 					}
 					if (!php_array_merge(Z_ARRVAL_PP(dest_entry), Z_ARRVAL_PP(src_entry), recursive TSRMLS_CC)) {
 						if (thash) {
-							thash->nApplyCount--;
+							thash->nApplyCount--; // 递归次数减一
 						}
 						return 0;
 					}
 					if (thash) {
 						thash->nApplyCount--;
 					}
-				} else {
+				} else {// array_merge
 					Z_ADDREF_PP(src_entry);
-					zend_hash_update(dest, string_key, string_key_len, src_entry, sizeof(zval *), NULL);
+					zend_hash_update(dest, string_key, string_key_len, src_entry, sizeof(zval *), NULL); // 插入或更新
 				}
 				break;
 
@@ -2410,7 +2412,7 @@ static void php_array_merge_or_replace_wrapper(INTERNAL_FUNCTION_PARAMETERS, int
 		} else {
 			int num = zend_hash_num_elements(Z_ARRVAL_PP(args[i]));
 
-			if (num > init_size) {
+			if (num > init_size) { // 取参数中数组数量大小的最大值做初始化值
 				init_size = num;
 			}
 		}
@@ -2420,11 +2422,11 @@ static void php_array_merge_or_replace_wrapper(INTERNAL_FUNCTION_PARAMETERS, int
 
 	for (i = 0; i < argc; i++) {
 		SEPARATE_ZVAL(args[i]);
-		if (!replace) {
+		if (!replace) { //array_merge或array_merge_recursive
 			php_array_merge(Z_ARRVAL_P(return_value), Z_ARRVAL_PP(args[i]), recursive TSRMLS_CC);
-		} else if (recursive && i > 0) { /* First array will be copied directly instead */
+		} else if (recursive && i > 0) { /* First array will be copied directly instead */ // array_replace_recursive
 			php_array_replace_recursive(Z_ARRVAL_P(return_value), Z_ARRVAL_PP(args[i]) TSRMLS_CC);
-		} else {
+		} else { // array_replace
 			zend_hash_merge(Z_ARRVAL_P(return_value), Z_ARRVAL_PP(args[i]), (copy_ctor_func_t) zval_add_ref, NULL, sizeof(zval *), 1);
 		}
 	}
