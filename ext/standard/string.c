@@ -2268,7 +2268,7 @@ PHP_FUNCTION(chunk_split)
 PHP_FUNCTION(substr)
 {
 	char *str;
-	long l = 0, f;
+	long l = 0, f; // f=>from代表start，l=>length代表length
 	int str_len;
 	int argc = ZEND_NUM_ARGS();
 
@@ -2283,7 +2283,7 @@ PHP_FUNCTION(substr)
 			l = str_len;
 		}
 	} else {
-		l = str_len;
+		l = str_len; // 如果length参数没有传递，设置l等于字符串长度
 	}
 
 	if (f > str_len) {
@@ -2299,7 +2299,7 @@ PHP_FUNCTION(substr)
 	/* if "from" position is negative, count start position from the end
 	 * of the string
 	 */
-	if (f < 0) {
+	if (f < 0) { // start是负数的处理
 		f = str_len + f;
 		if (f < 0) {
 			f = 0;
@@ -2309,7 +2309,7 @@ PHP_FUNCTION(substr)
 	/* if "length" position is negative, set it to the length
 	 * needed to stop that many chars from the end of the string
 	 */
-	if (l < 0) {
+	if (l < 0) { // length是负数的处理
 		l = (str_len - f) + l;
 		if (l < 0) {
 			l = 0;
@@ -2324,6 +2324,7 @@ PHP_FUNCTION(substr)
 		l = str_len - f;
 	}
 
+	// 核心调用，其实就是在前面设置好from和length后，用str + f作为字符串起始指针，然后取指针后面的l个字符
 	RETURN_STRINGL(str + f, l, 1);
 }
 /* }}} */
