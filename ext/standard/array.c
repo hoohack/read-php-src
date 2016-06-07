@@ -4549,7 +4549,7 @@ PHP_FUNCTION(array_combine)
 	num_keys = zend_hash_num_elements(Z_ARRVAL_P(keys));
 	num_values = zend_hash_num_elements(Z_ARRVAL_P(values));
 
-	if (num_keys != num_values) {
+	if (num_keys != num_values) { // 键和值数量不一样，报E_WARNING错误
 		php_error_docref(NULL TSRMLS_CC, E_WARNING, "Both parameters should have an equal number of elements");
 		RETURN_FALSE;
 	}
@@ -4560,32 +4560,34 @@ PHP_FUNCTION(array_combine)
 		return;
 	}
 
+	// 重置内部指针
 	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(keys), &pos_keys);
 	zend_hash_internal_pointer_reset_ex(Z_ARRVAL_P(values), &pos_values);
 	while (zend_hash_get_current_data_ex(Z_ARRVAL_P(keys), (void **)&entry_keys, &pos_keys) == SUCCESS &&
 		zend_hash_get_current_data_ex(Z_ARRVAL_P(values), (void **)&entry_values, &pos_values) == SUCCESS
 	) {
-		if (Z_TYPE_PP(entry_keys) == IS_LONG) {
+		if (Z_TYPE_PP(entry_keys) == IS_LONG) { // 数值键值
 			zval_add_ref(entry_values);
-			add_index_zval(return_value, Z_LVAL_PP(entry_keys), *entry_values);
-		} else {
+			add_index_zval(return_value, Z_LVAL_PP(entry_keys), *entry_values); // 添加值到return_value
+		} else { // 其他键值类型通通转换为string类型
 			zval key, *key_ptr = *entry_keys;
 
 			if (Z_TYPE_PP(entry_keys) != IS_STRING) {
 				key = **entry_keys;
 				zval_copy_ctor(&key);
-				convert_to_string(&key);
+				convert_to_string(&key); // 这里如果是数组的话会返回"Array"
 				key_ptr = &key;
 			}
 
 			zval_add_ref(entry_values);
-			add_assoc_zval_ex(return_value, Z_STRVAL_P(key_ptr), Z_STRLEN_P(key_ptr) + 1, *entry_values);
+			add_assoc_zval_ex(return_value, Z_STRVAL_P(key_ptr), Z_STRLEN_P(key_ptr) + 1, *entry_values); // 添加值到return_value
 
-			if (key_ptr != *entry_keys) {
+			if (key_ptr != *entry_keys) { // 如果key_ptr被修改了，即键值不是字符串，那么需要释放key指向的内存
 				zval_dtor(&key);
 			}
 		}
 
+		// 下一个
 		zend_hash_move_forward_ex(Z_ARRVAL_P(keys), &pos_keys);
 		zend_hash_move_forward_ex(Z_ARRVAL_P(values), &pos_values);
 	}
