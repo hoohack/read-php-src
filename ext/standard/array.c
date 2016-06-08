@@ -4242,11 +4242,11 @@ PHP_FUNCTION(array_filter)
 	}
 
 	array_init(return_value);
-	if (zend_hash_num_elements(Z_ARRVAL_P(array)) == 0) {
+	if (zend_hash_num_elements(Z_ARRVAL_P(array)) == 0) { // 没有参数，直接返回
 		return;
 	}
 
-	if (ZEND_NUM_ARGS() > 1) {
+	if (ZEND_NUM_ARGS() > 1) { // 参数数量大于1，说明有进行filter的回调函数
 		have_callback = 1;
 		fci.no_separation = 0;
 		fci.retval_ptr_ptr = &retval;
@@ -4259,10 +4259,11 @@ PHP_FUNCTION(array_filter)
 	) {
 		if (have_callback) {
 			args[0] = operand;
-			fci.params = args;
+			fci.params = args; // 设置回调函数的参数为当前数组元素
 
+			// 此处调用callback过滤数组元素
 			if (zend_call_function(&fci, &fci_cache TSRMLS_CC) == SUCCESS && retval) {
-				if (!zend_is_true(retval)) {
+				if (!zend_is_true(retval)) { // 如果调用callback之后为空，则继续到下一个数组元素
 					zval_ptr_dtor(&retval);
 					continue;
 				} else {
@@ -4272,11 +4273,12 @@ PHP_FUNCTION(array_filter)
 				php_error_docref(NULL TSRMLS_CC, E_WARNING, "An error occurred while invoking the filter callback");
 				return;
 			}
-		} else if (!zend_is_true(*operand)) {
+		} else if (!zend_is_true(*operand)) { // 没有设置filter的callback，默认调用zend_is_true，此函数在参数非空或非零值时返回true
 			continue;
 		}
 
 		zval_add_ref(operand);
+		// 将非空数组元素添加到return_value中(保留数字键值的原键值)
 		switch (zend_hash_get_current_key_ex(Z_ARRVAL_P(array), &string_key, &string_key_len, &num_key, 0, &pos)) {
 			case HASH_KEY_IS_STRING:
 				zend_hash_update(Z_ARRVAL_P(return_value), string_key, string_key_len, operand, sizeof(zval *), NULL);
