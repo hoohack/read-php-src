@@ -2634,10 +2634,10 @@ PHP_FUNCTION(array_reverse)
 	/* Initialize return array */
 	array_init_size(return_value, zend_hash_num_elements(Z_ARRVAL_P(input)));
 
-	zend_hash_internal_pointer_end_ex(Z_ARRVAL_P(input), &pos);
+	zend_hash_internal_pointer_end_ex(Z_ARRVAL_P(input), &pos); // 重置指针，将指针移动到最后一个数组元素
 	while (zend_hash_get_current_data_ex(Z_ARRVAL_P(input), (void **)&entry, &pos) == SUCCESS) {
 		zval_add_ref(entry);
-
+		// 将当前元素插入到return_value
 		switch (zend_hash_get_current_key_ex(Z_ARRVAL_P(input), &string_key, &string_key_len, &num_key, 0, &pos)) {
 			case HASH_KEY_IS_STRING:
 				zend_hash_update(Z_ARRVAL_P(return_value), string_key, string_key_len, entry, sizeof(zval *), NULL);
@@ -2652,6 +2652,7 @@ PHP_FUNCTION(array_reverse)
 				break;
 		}
 
+		// 将指针移动到前一个（PHP底层实现中，数组使用哈希表加双向链表）
 		zend_hash_move_backwards_ex(Z_ARRVAL_P(input), &pos);
 	}
 }
