@@ -52,30 +52,30 @@ typedef void (*copy_ctor_param_func_t)(void *pElement, void *pParam);
 struct _hashtable;
 
 typedef struct bucket {
-	ulong h;						/* Used for numeric indexing */
-	uint nKeyLength;
-	void *pData;
-	void *pDataPtr;
-	struct bucket *pListNext;
-	struct bucket *pListLast;
-	struct bucket *pNext;
-	struct bucket *pLast;
-	const char *arKey;
+	ulong h;			/* 哈希值（或数字键值的key）*/
+	uint nKeyLength;		/* key的长度 */
+	void *pData;			/* 指向数据的指针 */
+	void *pDataPtr;			/* 指针数据 */
+	struct bucket *pListNext;	/* 指向HashTable中的arBuckets链表中的下一个元素 */	
+	struct bucket *pListLast;	/* 指向HashTable中的arBuckets链表中的上一个元素 */
+	struct bucket *pNext;		/* 指向具有相同hash值的bucket链表中的下一个元素 */
+	struct bucket *pLast;		/* 指向具有相同hash值的bucket链表中的上一个元素 */
+	const char *arKey;		/* key的名称 */
 } Bucket;
 
 typedef struct _hashtable {
-	uint nTableSize;
-	uint nTableMask;
-	uint nNumOfElements;
-	ulong nNextFreeElement;
-	Bucket *pInternalPointer;	/* Used for element traversal */
-	Bucket *pListHead;
-	Bucket *pListTail;
-	Bucket **arBuckets;
-	dtor_func_t pDestructor;
-	zend_bool persistent;
-	unsigned char nApplyCount;
-	zend_bool bApplyProtection;
+	uint nTableSize;		/* HashTable的大小，以2的倍数增长 */
+	uint nTableMask;		/* 用在与哈希值做与运算获得该哈希值的索引取值，arBuckets初始化后永远是nTableSize-1 */
+	uint nNumOfElements;		/* HashTable当前拥有的元素个数，count函数直接返回这个值 */
+	ulong nNextFreeElement;		/* 表示数字键值数组中下一个数字索引的位置 */
+	Bucket *pInternalPointer;	/* 内部指针，用于遍历元素 */
+	Bucket *pListHead;		/* 指向HashTable的第一个元素，也是数组的第一个元素 */
+	Bucket *pListTail;		/* 指向HashTable的最后一个元素，也是数组的最后一个元素。与上面的指针结合，在遍历数组时非常方便，比如reset和endAPI */
+	Bucket **arBuckets;		/* 包含bucket组成的双向链表的数组，索引用key的哈希值和nTableMask做与运算生成 */
+	dtor_func_t pDestructor;	/* 删除哈希表中的元素使用的析构函数 */
+	zend_bool persistent;		/* 标识内存分配函数，如果是TRUE，则使用操作系统本身的内存分配函数，否则使用PHP的内存分配函数 */
+	unsigned char nApplyCount;	/* 保存当前bucket被递归访问的次数，防止多次递归 */
+	zend_bool bApplyProtection;	/* 标识哈希表是否要使用递归保护，默认是1，即要使用 */
 #if ZEND_DEBUG
 	int inconsistent;
 #endif
@@ -258,6 +258,7 @@ ZEND_API int zend_hash_rehash(HashTable *ht);
  *                  -- Ralf S. Engelschall <rse@engelschall.com>
  */
 
+/* 哈希表使用的哈希函数，使用的是DJBX33A算法 */
 static inline ulong zend_inline_hash_func(const char *arKey, uint nKeyLength)
 {
 	register ulong hash = 5381;
