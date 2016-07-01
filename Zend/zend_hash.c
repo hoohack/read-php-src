@@ -641,6 +641,7 @@ ZEND_API int zend_hash_del_key_or_index(HashTable *ht, const char *arKey,
 	return FAILURE;
 }
 
+/* 销毁HashTable */
 ZEND_API void zend_hash_destroy(HashTable *ht)
 {
 	Bucket *p, *q;
@@ -649,6 +650,7 @@ ZEND_API void zend_hash_destroy(HashTable *ht)
 
 	SET_INCONSISTENT(HT_IS_DESTROYING);
 
+	/* 指向HashTable的第一个元素 (pListHead在desctroy的时候和很有用) */
 	p = ht->pListHead;
 	while (p != NULL) {
 		q = p;
@@ -668,6 +670,7 @@ ZEND_API void zend_hash_destroy(HashTable *ht)
 	SET_INCONSISTENT(HT_DESTROYED);
 }
 
+/* 移除HashTable的所有元素，并不是真正销毁它 */
 ZEND_API void zend_hash_clean(HashTable *ht)
 {
 	Bucket *p, *q;
@@ -677,6 +680,7 @@ ZEND_API void zend_hash_clean(HashTable *ht)
 	p = ht->pListHead;
 
 	if (ht->nTableMask) {
+		/* 这里只是将ht->arBuckets重置为0,并没有释放其内存 */
 		memset(ht->arBuckets, 0, ht->nTableSize * sizeof(Bucket *));
 	}
 	ht->pListHead = NULL;
