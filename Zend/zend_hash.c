@@ -203,6 +203,7 @@ ZEND_API int _zend_hash_init(HashTable *ht, uint nSize,
 	return SUCCESS;
 }
 
+/* 在ZEND引擎内部数据结构初始化时使用，如function和class */
 ZEND_API int _zend_hash_init_ex(HashTable *ht, uint nSize,
 				hash_func_t pHashFunction,
 				dtor_func_t pDestructor, zend_bool persistent,
@@ -514,6 +515,7 @@ ZEND_API int _zend_hash_index_update_or_next_insert(HashTable *ht, ulong h,
 	return SUCCESS;
 }
 
+/* HashTable容量满了的时候重新分配大小 */
 static int zend_hash_do_resize(HashTable *ht)
 {
 	Bucket **t;
@@ -524,14 +526,18 @@ static int zend_hash_do_resize(HashTable *ht)
 	IS_CONSISTENT(ht);
 
 	if ((ht->nTableSize << 1) > 0) { /* Let's double the table size */
+		/* 重新分配大小 */
 		t = (Bucket **)perealloc_recoverable(
 		    ht->arBuckets, (ht->nTableSize << 1) * sizeof(Bucket *),
 		    ht->persistent);
 		if (t) {
 			HANDLE_BLOCK_INTERRUPTIONS();
 			ht->arBuckets = t;
+			/* 设置nTableSize */
 			ht->nTableSize = (ht->nTableSize << 1);
+			/* nTableMask随着nTableSize改变，永远是nTableSize-1 */
 			ht->nTableMask = ht->nTableSize - 1;
+			/* 修改HashTable大小之后需要重新哈希 */
 			zend_hash_rehash(ht);
 			HANDLE_UNBLOCK_INTERRUPTIONS();
 			return SUCCESS;
@@ -541,6 +547,7 @@ static int zend_hash_do_resize(HashTable *ht)
 	return SUCCESS;
 }
 
+/* 对哈希表进行重新哈希操作 */
 ZEND_API int zend_hash_rehash(HashTable *ht)
 {
 	Bucket *p;
@@ -550,10 +557,13 @@ ZEND_API int zend_hash_rehash(HashTable *ht)
 	if (UNEXPECTED(ht->nNumOfElements == 0)) {
 		return SUCCESS;
 	}
-
+	/* 先将arBuckets重新初始化为0 */
 	memset(ht->arBuckets, 0, ht->nTableSize * sizeof(Bucket *));
+	/* p指向pListHead，pListHead指向数组的第一个元素，保存这个指针在重新哈希的时候也非常有用
+	 */
 	p = ht->pListHead;
 	while (p != NULL) {
+		/* 逐个计算下标然后添加到相同哈希值的bucket中 */
 		nIndex = p->h & ht->nTableMask;
 		CONNECT_TO_BUCKET_DLLIST(p, ht->arBuckets[nIndex]);
 		ht->arBuckets[nIndex] = p;
@@ -562,6 +572,7 @@ ZEND_API int zend_hash_rehash(HashTable *ht)
 	return SUCCESS;
 }
 
+/* 根据key或index删除HashTable中的元素 */
 ZEND_API int zend_hash_del_key_or_index(HashTable *ht, const char *arKey,
 					uint nKeyLength, ulong h, int flag)
 {
@@ -573,6 +584,7 @@ ZEND_API int zend_hash_del_key_or_index(HashTable *ht, const char *arKey,
 
 	IS_CONSISTENT(ht);
 
+	/* 如果是根据key删除，则先计算key的哈希值 */
 	if (flag == HASH_DEL_KEY) {
 		h = zend_inline_hash_func(arKey, nKeyLength);
 	}
@@ -586,11 +598,15 @@ ZEND_API int zend_hash_del_key_or_index(HashTable *ht, const char *arKey,
 		     ||
 		     !memcmp(p->arKey, arKey, nKeyLength))) { /* String index */
 			HANDLE_BLOCK_INTERRUPTIONS();
+			/* 如果是第一个，直接将arBucket[nIndex]执行第二个元素 */
 			if (p == ht->arBuckets[nIndex]) {
 				ht->arBuckets[nIndex] = p->pNext;
 			} else {
+				/* 其余的操作是将当前指针的last的next执行当前的next
+				 */
 				p->pLast->pNext = p->pNext;
 			}
+			/* 调整相关的指针 */
 			if (p->pNext) {
 				p->pNext->pLast = p->pLast;
 			}
@@ -608,6 +624,7 @@ ZEND_API int zend_hash_del_key_or_index(HashTable *ht, const char *arKey,
 			if (ht->pInternalPointer == p) {
 				ht->pInternalPointer = p->pListNext;
 			}
+			/* 释放数据内存和bucket结构体内存 */
 			if (ht->pDestructor) {
 				ht->pDestructor(p->pData);
 			}
