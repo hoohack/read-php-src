@@ -68,7 +68,7 @@ typedef struct _hashtable {
 	uint nTableMask;		/* 用在与哈希值做与运算获得该哈希值的索引取值，arBuckets初始化后永远是nTableSize-1 */
 	uint nNumOfElements;		/* HashTable当前拥有的元素个数，count函数直接返回这个值 */
 	ulong nNextFreeElement;		/* 表示数字键值数组中下一个数字索引的位置 */
-	Bucket *pInternalPointer;	/* 内部指针，用于遍历元素 */
+	Bucket *pInternalPointer;	/* 内部指针，指向当前成员，用于遍历元素 */
 	Bucket *pListHead;		/* 指向HashTable的第一个元素，也是数组的第一个元素 */
 	Bucket *pListTail;		/* 指向HashTable的最后一个元素，也是数组的最后一个元素。与上面的指针结合，在遍历数组时非常方便，比如reset和endAPI */
 	Bucket **arBuckets;		/* 包含bucket组成的双向链表的数组，索引用key的哈希值和nTableMask做与运算生成 */

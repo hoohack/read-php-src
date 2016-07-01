@@ -1187,6 +1187,7 @@ ZEND_API int zend_hash_num_elements(const HashTable *ht)
 	return ht->nNumOfElements;
 }
 
+/* 将HashPointer的指针指向HashTable的内部指针的位置 */
 ZEND_API int zend_hash_get_pointer(const HashTable *ht, HashPointer *ptr)
 {
 	ptr->pos = ht->pInternalPointer;
@@ -1199,6 +1200,8 @@ ZEND_API int zend_hash_get_pointer(const HashTable *ht, HashPointer *ptr)
 	}
 }
 
+/* 如果HashTable的内部指针位置跟HashPointer的位置不一致，就把HashTable的内部指针指向HashPointer
+ */
 ZEND_API int zend_hash_set_pointer(HashTable *ht, const HashPointer *ptr)
 {
 	if (ptr->pos == NULL) {
@@ -1220,6 +1223,7 @@ ZEND_API int zend_hash_set_pointer(HashTable *ht, const HashPointer *ptr)
 	return 1;
 }
 
+/* 用在内部数据结构的函数，重置内部指针到第一个 */
 ZEND_API void zend_hash_internal_pointer_reset_ex(HashTable *ht,
 						  HashPosition *pos)
 {
@@ -1234,6 +1238,7 @@ ZEND_API void zend_hash_internal_pointer_reset_ex(HashTable *ht,
 /* This function will be extremely optimized by remembering
  * the end of the list
  */
+/* 用在内部数据结构的函数，将内部指针指向最后一个 */
 ZEND_API void zend_hash_internal_pointer_end_ex(HashTable *ht,
 						HashPosition *pos)
 {
@@ -1245,6 +1250,7 @@ ZEND_API void zend_hash_internal_pointer_end_ex(HashTable *ht,
 		ht->pInternalPointer = ht->pListTail;
 }
 
+/* 用在内部数据结构的函数，指针向后移动一位 */
 ZEND_API int zend_hash_move_forward_ex(HashTable *ht, HashPosition *pos)
 {
 	HashPosition *current = pos ? pos : &ht->pInternalPointer;
@@ -1258,6 +1264,7 @@ ZEND_API int zend_hash_move_forward_ex(HashTable *ht, HashPosition *pos)
 		return FAILURE;
 }
 
+/* 用在内部数据结构的函数，指针向前移动一位 */
 ZEND_API int zend_hash_move_backwards_ex(HashTable *ht, HashPosition *pos)
 {
 	HashPosition *current = pos ? pos : &ht->pInternalPointer;
@@ -1272,6 +1279,7 @@ ZEND_API int zend_hash_move_backwards_ex(HashTable *ht, HashPosition *pos)
 }
 
 /* This function should be made binary safe  */
+/* 用在内部数据结构的函数，获取指针当前指向bucket的key的值 */
 ZEND_API int zend_hash_get_current_key_ex(const HashTable *ht, char **str_index,
 					  uint *str_length, ulong *num_index,
 					  zend_bool duplicate,
@@ -1303,6 +1311,7 @@ ZEND_API int zend_hash_get_current_key_ex(const HashTable *ht, char **str_index,
 	return HASH_KEY_NON_EXISTANT;
 }
 
+/* 用在内部数据结构的函数，返回当前指针执行的buckey的key的类型 */
 ZEND_API int zend_hash_get_current_key_type_ex(HashTable *ht, HashPosition *pos)
 {
 	Bucket *p;
@@ -1321,6 +1330,7 @@ ZEND_API int zend_hash_get_current_key_type_ex(HashTable *ht, HashPosition *pos)
 	return HASH_KEY_NON_EXISTANT;
 }
 
+/* 用在内部数据结构的函数，获取当前指针执行的buckey的data */
 ZEND_API int zend_hash_get_current_data_ex(HashTable *ht, void **pData,
 					   HashPosition *pos)
 {
@@ -1567,6 +1577,7 @@ ZEND_API int zend_hash_update_current_key_ex(HashTable *ht, int key_type,
 	}
 }
 
+/* 用于使用sort_func_t对HashTable进行排序 */
 ZEND_API int zend_hash_sort(HashTable *ht, sort_func_t sort_func,
 			    compare_func_t compar, int renumber TSRMLS_DC)
 {
@@ -1594,6 +1605,8 @@ ZEND_API int zend_hash_sort(HashTable *ht, sort_func_t sort_func,
 		i++;
 	}
 
+	/* 调用sort_func函数进行排序操作，如无特殊情况，用的是PHP预定义的快排实现:zend_qsort函数
+	 */
 	(*sort_func)((void *)arTmp, i, sizeof(Bucket *), compar TSRMLS_CC);
 
 	HANDLE_BLOCK_INTERRUPTIONS();
@@ -1602,6 +1615,7 @@ ZEND_API int zend_hash_sort(HashTable *ht, sort_func_t sort_func,
 	ht->pInternalPointer = ht->pListHead;
 
 	arTmp[0]->pListLast = NULL;
+	/* 遍历数组，设置每一个节点的pListLast和pListNext */
 	if (i > 1) {
 		arTmp[0]->pListNext = arTmp[1];
 		for (j = 1; j < i - 1; j++) {
@@ -1618,6 +1632,7 @@ ZEND_API int zend_hash_sort(HashTable *ht, sort_func_t sort_func,
 	pefree(arTmp, ht->persistent);
 	HANDLE_UNBLOCK_INTERRUPTIONS();
 
+	/* 如果renumber == 1，数组会被重新编号 */
 	if (renumber) {
 		p = ht->pListHead;
 		i = 0;
