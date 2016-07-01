@@ -324,6 +324,7 @@ ZEND_API int _zend_hash_add_or_update(HashTable *ht, const char *arKey,
 	return SUCCESS;
 }
 
+/* 添加元素的快速版本，接收一个已经计算好的哈希值作为参数 */
 ZEND_API int _zend_hash_quick_add_or_update(HashTable *ht, const char *arKey,
 					    uint nKeyLength, ulong h,
 					    void *pData, uint nDataSize,
@@ -421,6 +422,7 @@ ZEND_API int zend_hash_add_empty_element(HashTable *ht, const char *arKey,
 			     NULL);
 }
 
+/* 数字键值的插入修改 */
 ZEND_API int _zend_hash_index_update_or_next_insert(HashTable *ht, ulong h,
 						    void *pData, uint nDataSize,
 						    void **pDest,
@@ -1031,6 +1033,7 @@ ZEND_API ulong zend_get_hash_value(const char *arKey, uint nKeyLength)
  * data is returned in pData. The reason is that there's no reason
  * someone using the hash table might not want to have NULL data
  */
+/* 在HastTable中查找字符串键值key代表元素 */
 ZEND_API int zend_hash_find(const HashTable *ht, const char *arKey,
 			    uint nKeyLength, void **pData)
 {
@@ -1056,6 +1059,7 @@ ZEND_API int zend_hash_find(const HashTable *ht, const char *arKey,
 	return FAILURE;
 }
 
+/* 在HastTable中查找key代表元素的快速版本，参数列表中接收一个计算好的哈希值 */
 ZEND_API int zend_hash_quick_find(const HashTable *ht, const char *arKey,
 				  uint nKeyLength, ulong h, void **pData)
 {
@@ -1083,6 +1087,7 @@ ZEND_API int zend_hash_quick_find(const HashTable *ht, const char *arKey,
 	return FAILURE;
 }
 
+/* 判断某个key是否存在HashTable中 */
 ZEND_API int zend_hash_exists(const HashTable *ht, const char *arKey,
 			      uint nKeyLength)
 {
@@ -1107,6 +1112,7 @@ ZEND_API int zend_hash_exists(const HashTable *ht, const char *arKey,
 	return 0;
 }
 
+/* 判断某个key是否存在HashTable中的快速版本 */
 ZEND_API int zend_hash_quick_exists(const HashTable *ht, const char *arKey,
 				    uint nKeyLength, ulong h)
 {
@@ -1133,6 +1139,7 @@ ZEND_API int zend_hash_quick_exists(const HashTable *ht, const char *arKey,
 	return 0;
 }
 
+/* 在HashTable中查找数字键值的元素 */
 ZEND_API int zend_hash_index_find(const HashTable *ht, ulong h, void **pData)
 {
 	uint nIndex;
@@ -1153,6 +1160,7 @@ ZEND_API int zend_hash_index_find(const HashTable *ht, ulong h, void **pData)
 	return FAILURE;
 }
 
+/* 判断数组键值是否存在HashTable中 */
 ZEND_API int zend_hash_index_exists(const HashTable *ht, ulong h)
 {
 	uint nIndex;
@@ -1624,6 +1632,15 @@ ZEND_API int zend_hash_sort(HashTable *ht, sort_func_t sort_func,
 	return SUCCESS;
 }
 
+/* 比较两个哈希表
+ * 先比较两个哈希表的大小，大小较大的哈希表则更大
+ * 如果大小一样，则要根据orderd的值来继续操作
+ *	如果orderd ==
+0,函数会遍历第一个哈希表的元素，也会如果第二个哈希表中的有元素跟第一个哈希表当前值有相同key的时候也会查找第二个哈希表，找到key相同，则比较data大小，否则，第一个哈希表更大
+ *	如果orderd == 1,
+两个哈希表都会被同时遍历，遍历的每一对元素先比较key，再比较data */
+/* 循环会在某个比较返回非0值时或者没有更多元素需要比较时结束，如果是后者，那么两个哈希表相同
+ */
 ZEND_API int zend_hash_compare(HashTable *ht1, HashTable *ht2,
 			       compare_func_t compar,
 			       zend_bool ordered TSRMLS_DC)
@@ -1638,6 +1655,7 @@ ZEND_API int zend_hash_compare(HashTable *ht1, HashTable *ht2,
 	HASH_PROTECT_RECURSION(ht1);
 	HASH_PROTECT_RECURSION(ht2);
 
+	/* 先比较哈希表的大小，大小较大的哈希表就大 */
 	result = ht1->nNumOfElements - ht2->nNumOfElements;
 	if (result != 0) {
 		HASH_UNPROTECT_RECURSION(ht1);
@@ -1646,19 +1664,25 @@ ZEND_API int zend_hash_compare(HashTable *ht1, HashTable *ht2,
 	}
 
 	p1 = ht1->pListHead;
+	/* 如果orderd == 1，两个哈希表同时遍历 */
 	if (ordered) {
 		p2 = ht2->pListHead;
 	}
 
 	while (p1) {
 		if (ordered && !p2) {
+			/* 如果orderd等于1，且此时p2以及没有更多元素，则第一个哈希表更大
+			 */
 			HASH_UNPROTECT_RECURSION(ht1);
 			HASH_UNPROTECT_RECURSION(ht2);
 			return 1; /* That's not supposed to happen */
 		}
 		if (ordered) {
+			/* orderd == 1 */
 			if (p1->nKeyLength == 0 &&
 			    p2->nKeyLength == 0) { /* numeric indices */
+				/* 如果是数字键值，比较哈希值的大小作为返回结果
+				 */
 				result = p1->h - p2->h;
 				if (result != 0) {
 					HASH_UNPROTECT_RECURSION(ht1);
@@ -1666,6 +1690,7 @@ ZEND_API int zend_hash_compare(HashTable *ht1, HashTable *ht2,
 					return result;
 				}
 			} else { /* string indices */
+				/* 如果是字符串键值，先比较字符串键值的大小 */
 				result = p1->nKeyLength - p2->nKeyLength;
 				if (result != 0) {
 					HASH_UNPROTECT_RECURSION(ht1);
@@ -1682,6 +1707,7 @@ ZEND_API int zend_hash_compare(HashTable *ht1, HashTable *ht2,
 			}
 			pData2 = p2->pData;
 		} else {
+			/* orderd == 0 */
 			if (p1->nKeyLength == 0) { /* numeric index */
 				if (zend_hash_index_find(ht2, p1->h, &pData2) ==
 				    FAILURE) {
@@ -1699,6 +1725,7 @@ ZEND_API int zend_hash_compare(HashTable *ht1, HashTable *ht2,
 				}
 			}
 		}
+		/* 如果key相同，则继续比较data */
 		result = compar(p1->pData, pData2 TSRMLS_CC);
 		if (result != 0) {
 			HASH_UNPROTECT_RECURSION(ht1);
@@ -1716,6 +1743,7 @@ ZEND_API int zend_hash_compare(HashTable *ht1, HashTable *ht2,
 	return 0;
 }
 
+/* 返回最大值和最小值 */
 ZEND_API int zend_hash_minmax(const HashTable *ht, compare_func_t compar,
 			      int flag, void **pData TSRMLS_DC)
 {
