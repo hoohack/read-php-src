@@ -170,6 +170,7 @@ static const Bucket *uninitialized_bucket = NULL;
 /* 初始化哈希表
  * 1、设置哈希表大小 (通过nSize参数)
  * 2、设置结构体其他成员变量的初始值 (包括释放内存用的析构函数pDescructor)
+ * 3、pHashFunction在此处并没有用到，php的哈希函数使用的是内部的zend_inline_hash_func
  * */
 ZEND_API int _zend_hash_init(HashTable *ht, uint nSize,
 			     hash_func_t pHashFunction, dtor_func_t pDestructor,
