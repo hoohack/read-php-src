@@ -601,7 +601,7 @@ ZEND_API int zend_hash_del_key_or_index(HashTable *ht, const char *arKey,
 		     ||
 		     !memcmp(p->arKey, arKey, nKeyLength))) { /* String index */
 			HANDLE_BLOCK_INTERRUPTIONS();
-			/* 如果是第一个，直接将arBucket[nIndex]执行第二个元素 */
+			/* 如果是第一个，直接将arBucket[nIndex]指向第二个元素 */
 			if (p == ht->arBuckets[nIndex]) {
 				ht->arBuckets[nIndex] = p->pNext;
 			} else {
