@@ -412,7 +412,7 @@ END_EXTERN_C()
 		convert_scalar_to_number(*ppzv TSRMLS_CC);					\
 	}
 
-
+/* 获取变量信息的宏定义，如类型，变量值等等，有_P后缀的是指向zval的指针的值 */
 #define Z_LVAL(zval)			(zval).value.lval
 #define Z_BVAL(zval)			((zend_bool)(zval).value.lval)
 #define Z_DVAL(zval)			(zval).value.dval

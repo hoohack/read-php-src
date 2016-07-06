@@ -305,22 +305,22 @@ typedef struct _zend_object {
 #include "zend_object_handlers.h"
 
 typedef union _zvalue_value {
-	long lval;					/* long value */
-	double dval;				/* double value */
+	long lval;				/* 整型值，long value */
+	double dval;				/* 浮点值，double value */
 	struct {
 		char *val;
 		int len;
-	} str;
-	HashTable *ht;				/* hash table value */
-	zend_object_value obj;
+	} str;					/* 字符串 */
+	HashTable *ht;				/* HashTable值，保存数组，hash table value */
+	zend_object_value obj;			/* 保存对象 */
 } zvalue_value;
 
 struct _zval_struct {
 	/* Variable information */
-	zvalue_value value;		/* value */
-	zend_uint refcount__gc;
-	zend_uchar type;	/* active type */
-	zend_uchar is_ref__gc;
+	zvalue_value value;	/* 数据值，value */
+	zend_uint refcount__gc; /* 引用计数 */
+	zend_uchar type;	/* 真正的类型，active type */
+	zend_uchar is_ref__gc;  /* 是否引用 */
 };
 
 #define Z_REFCOUNT_PP(ppz)		Z_REFCOUNT_P(*(ppz))
