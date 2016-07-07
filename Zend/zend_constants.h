@@ -31,11 +31,11 @@
 #define	PHP_USER_CONSTANT INT_MAX	/* a constant defined in user space */
 
 typedef struct _zend_constant {
-	zval value;
-	int flags;
-	char *name;
-	uint name_len;
-	int module_number;
+	zval value;		/* zval结构体，保存常量值 */
+	int flags;		/* 常量标记，如CONST_PERSITENT */
+	char *name;		/* 常量名称 */
+	uint name_len;		
+	int module_number;	/* 模块号 */
 } zend_constant;
 
 #define REGISTER_LONG_CONSTANT(name, lval, flags)  zend_register_long_constant((name), sizeof(name), (lval), (flags), module_number TSRMLS_CC)
