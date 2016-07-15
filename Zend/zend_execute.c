@@ -670,6 +670,7 @@ ZEND_API char *zend_verify_arg_class_kind(const zend_arg_info *cur_arg_info,
 	}
 }
 
+/* 调用函数或方法时类型提示显示错误信息的最终执行位置。*/
 ZEND_API int zend_verify_arg_error(int error_type, const zend_function *zf,
 				   zend_uint arg_num, const char *need_msg,
 				   const char *need_kind, const char *given_msg,
@@ -718,9 +719,11 @@ static inline int zend_verify_arg_type(zend_function *zf, zend_uint arg_num,
 
 	cur_arg_info = &zf->common.arg_info[arg_num - 1];
 
+	/* 提示类型是类 */
 	if (cur_arg_info->class_name) {
 		const char *class_name;
 
+		/* 参数不存在，报错 */
 		if (!arg) {
 			need_msg = zend_verify_arg_class_kind(
 			    cur_arg_info, fetch_type, &class_name,
@@ -730,9 +733,11 @@ static inline int zend_verify_arg_type(zend_function *zf, zend_uint arg_num,
 			    class_name, "none", "" TSRMLS_CC);
 		}
 		if (Z_TYPE_P(arg) == IS_OBJECT) {
+			/* 参数是对象 */
 			need_msg = zend_verify_arg_class_kind(
 			    cur_arg_info, fetch_type, &class_name,
 			    &ce TSRMLS_CC);
+			/* 如果不是子类，报错 */
 			if (!ce ||
 			    !instanceof_function(Z_OBJCE_P(arg),
 						 ce TSRMLS_CC)) {
@@ -743,6 +748,7 @@ static inline int zend_verify_arg_type(zend_function *zf, zend_uint arg_num,
 			}
 		} else if (Z_TYPE_P(arg) != IS_NULL ||
 			   !cur_arg_info->allow_null) {
+			/* 参数不是对象，且为NULL或定义了默认值 */
 			need_msg = zend_verify_arg_class_kind(
 			    cur_arg_info, fetch_type, &class_name,
 			    &ce TSRMLS_CC);
@@ -753,6 +759,7 @@ static inline int zend_verify_arg_type(zend_function *zf, zend_uint arg_num,
 	} else if (cur_arg_info->type_hint) {
 		switch (cur_arg_info->type_hint) {
 		case IS_ARRAY:
+			/* 提示类型是数组 */
 			if (!arg) {
 				return zend_verify_arg_error(
 				    E_RECOVERABLE_ERROR, zf, arg_num,
