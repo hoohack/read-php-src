@@ -1,0 +1,926 @@
+Terminals unused in grammar
+
+   ':'
+   ','
+   '.'
+   '\''
+   '+'
+   '-'
+   '/'
+   '*'
+   '%'
+   '$'
+   '<'
+   '>'
+   '?'
+   '@'
+   '{'
+
+
+Grammar
+
+    0 $accept: statement_list $end
+
+    1 statement_list: statement_list statement
+    2               | /* empty */
+
+    3 statement: TC_SECTION section_string_or_value ']'
+    4          | TC_LABEL '=' string_or_value
+    5          | TC_OFFSET option_offset ']' '=' string_or_value
+    6          | TC_LABEL
+    7          | END_OF_LINE
+
+    8 section_string_or_value: var_string_list_section
+    9                        | /* empty */
+
+   10 string_or_value: expr
+   11                | BOOL_TRUE
+   12                | BOOL_FALSE
+   13                | NULL_NULL
+   14                | END_OF_LINE
+
+   15 option_offset: var_string_list
+   16              | /* empty */
+
+   17 encapsed_list: encapsed_list cfg_var_ref
+   18              | encapsed_list TC_QUOTED_STRING
+   19              | /* empty */
+
+   20 var_string_list_section: cfg_var_ref
+   21                        | constant_literal
+   22                        | '"' encapsed_list '"'
+   23                        | var_string_list_section cfg_var_ref
+   24                        | var_string_list_section constant_literal
+   25                        | var_string_list_section '"' encapsed_list '"'
+
+   26 var_string_list: cfg_var_ref
+   27                | constant_string
+   28                | '"' encapsed_list '"'
+   29                | var_string_list cfg_var_ref
+   30                | var_string_list constant_string
+   31                | var_string_list '"' encapsed_list '"'
+
+   32 expr: var_string_list
+   33     | expr '|' expr
+   34     | expr '&' expr
+   35     | expr '^' expr
+   36     | '~' expr
+   37     | '!' expr
+   38     | '(' expr ')'
+
+   39 cfg_var_ref: TC_DOLLAR_CURLY TC_VARNAME '}'
+
+   40 constant_literal: TC_CONSTANT
+   41                 | TC_RAW
+   42                 | TC_NUMBER
+   43                 | TC_STRING
+   44                 | TC_WHITESPACE
+
+   45 constant_string: TC_CONSTANT
+   46                | TC_RAW
+   47                | TC_NUMBER
+   48                | TC_STRING
+   49                | TC_WHITESPACE
+
+
+Terminals, with rules where they appear
+
+$end (0) 0
+'!' (33) 37
+'"' (34) 22 25 28 31
+'$' (36)
+'%' (37)
+'&' (38) 34
+'\'' (39)
+'(' (40) 38
+')' (41) 38
+'*' (42)
+'+' (43)
+',' (44)
+'-' (45)
+'.' (46)
+'/' (47)
+':' (58)
+'<' (60)
+'=' (61) 4 5
+'>' (62)
+'?' (63)
+'@' (64)
+']' (93) 3 5
+'^' (94) 35
+'{' (123)
+'|' (124) 33
+'}' (125) 39
+'~' (126) 36
+error (256)
+TC_SECTION (258) 3
+TC_RAW (259) 41 46
+TC_CONSTANT (260) 40 45
+TC_NUMBER (261) 42 47
+TC_STRING (262) 43 48
+TC_WHITESPACE (263) 44 49
+TC_LABEL (264) 4 6
+TC_OFFSET (265) 5
+TC_DOLLAR_CURLY (266) 39
+TC_VARNAME (267) 39
+TC_QUOTED_STRING (268) 18
+BOOL_TRUE (269) 11
+BOOL_FALSE (270) 12
+NULL_NULL (271) 13
+END_OF_LINE (272) 7 14
+
+
+Nonterminals, with rules where they appear
+
+$accept (44)
+    on left: 0
+statement_list (45)
+    on left: 1 2, on right: 0 1
+statement (46)
+    on left: 3 4 5 6 7, on right: 1
+section_string_or_value (47)
+    on left: 8 9, on right: 3
+string_or_value (48)
+    on left: 10 11 12 13 14, on right: 4 5
+option_offset (49)
+    on left: 15 16, on right: 5
+encapsed_list (50)
+    on left: 17 18 19, on right: 17 18 22 25 28 31
+var_string_list_section (51)
+    on left: 20 21 22 23 24 25, on right: 8 23 24 25
+var_string_list (52)
+    on left: 26 27 28 29 30 31, on right: 15 29 30 31 32
+expr (53)
+    on left: 32 33 34 35 36 37 38, on right: 10 33 34 35 36 37 38
+cfg_var_ref (54)
+    on left: 39, on right: 17 20 23 26 29
+constant_literal (55)
+    on left: 40 41 42 43 44, on right: 21 24
+constant_string (56)
+    on left: 45 46 47 48 49, on right: 27 30
+
+
+State 0
+
+    0 $accept: . statement_list $end
+
+    $default  reduce using rule 2 (statement_list)
+
+    statement_list  go to state 1
+
+
+State 1
+
+    0 $accept: statement_list . $end
+    1 statement_list: statement_list . statement
+
+    $end         shift, and go to state 2
+    TC_SECTION   shift, and go to state 3
+    TC_LABEL     shift, and go to state 4
+    TC_OFFSET    shift, and go to state 5
+    END_OF_LINE  shift, and go to state 6
+
+    statement  go to state 7
+
+
+State 2
+
+    0 $accept: statement_list $end .
+
+    $default  accept
+
+
+State 3
+
+    3 statement: TC_SECTION . section_string_or_value ']'
+
+    TC_RAW           shift, and go to state 8
+    TC_CONSTANT      shift, and go to state 9
+    TC_NUMBER        shift, and go to state 10
+    TC_STRING        shift, and go to state 11
+    TC_WHITESPACE    shift, and go to state 12
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 14
+
+    $default  reduce using rule 9 (section_string_or_value)
+
+    section_string_or_value  go to state 15
+    var_string_list_section  go to state 16
+    cfg_var_ref              go to state 17
+    constant_literal         go to state 18
+
+
+State 4
+
+    4 statement: TC_LABEL . '=' string_or_value
+    6          | TC_LABEL .
+
+    '='  shift, and go to state 19
+
+    $default  reduce using rule 6 (statement)
+
+
+State 5
+
+    5 statement: TC_OFFSET . option_offset ']' '=' string_or_value
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 25
+
+    $default  reduce using rule 16 (option_offset)
+
+    option_offset    go to state 26
+    var_string_list  go to state 27
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 6
+
+    7 statement: END_OF_LINE .
+
+    $default  reduce using rule 7 (statement)
+
+
+State 7
+
+    1 statement_list: statement_list statement .
+
+    $default  reduce using rule 1 (statement_list)
+
+
+State 8
+
+   41 constant_literal: TC_RAW .
+
+    $default  reduce using rule 41 (constant_literal)
+
+
+State 9
+
+   40 constant_literal: TC_CONSTANT .
+
+    $default  reduce using rule 40 (constant_literal)
+
+
+State 10
+
+   42 constant_literal: TC_NUMBER .
+
+    $default  reduce using rule 42 (constant_literal)
+
+
+State 11
+
+   43 constant_literal: TC_STRING .
+
+    $default  reduce using rule 43 (constant_literal)
+
+
+State 12
+
+   44 constant_literal: TC_WHITESPACE .
+
+    $default  reduce using rule 44 (constant_literal)
+
+
+State 13
+
+   39 cfg_var_ref: TC_DOLLAR_CURLY . TC_VARNAME '}'
+
+    TC_VARNAME  shift, and go to state 30
+
+
+State 14
+
+   22 var_string_list_section: '"' . encapsed_list '"'
+
+    $default  reduce using rule 19 (encapsed_list)
+
+    encapsed_list  go to state 31
+
+
+State 15
+
+    3 statement: TC_SECTION section_string_or_value . ']'
+
+    ']'  shift, and go to state 32
+
+
+State 16
+
+    8 section_string_or_value: var_string_list_section .
+   23 var_string_list_section: var_string_list_section . cfg_var_ref
+   24                        | var_string_list_section . constant_literal
+   25                        | var_string_list_section . '"' encapsed_list '"'
+
+    TC_RAW           shift, and go to state 8
+    TC_CONSTANT      shift, and go to state 9
+    TC_NUMBER        shift, and go to state 10
+    TC_STRING        shift, and go to state 11
+    TC_WHITESPACE    shift, and go to state 12
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 33
+
+    $default  reduce using rule 8 (section_string_or_value)
+
+    cfg_var_ref       go to state 34
+    constant_literal  go to state 35
+
+
+State 17
+
+   20 var_string_list_section: cfg_var_ref .
+
+    $default  reduce using rule 20 (var_string_list_section)
+
+
+State 18
+
+   21 var_string_list_section: constant_literal .
+
+    $default  reduce using rule 21 (var_string_list_section)
+
+
+State 19
+
+    4 statement: TC_LABEL '=' . string_or_value
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    BOOL_TRUE        shift, and go to state 36
+    BOOL_FALSE       shift, and go to state 37
+    NULL_NULL        shift, and go to state 38
+    END_OF_LINE      shift, and go to state 39
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    string_or_value  go to state 43
+    var_string_list  go to state 44
+    expr             go to state 45
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 20
+
+   46 constant_string: TC_RAW .
+
+    $default  reduce using rule 46 (constant_string)
+
+
+State 21
+
+   45 constant_string: TC_CONSTANT .
+
+    $default  reduce using rule 45 (constant_string)
+
+
+State 22
+
+   47 constant_string: TC_NUMBER .
+
+    $default  reduce using rule 47 (constant_string)
+
+
+State 23
+
+   48 constant_string: TC_STRING .
+
+    $default  reduce using rule 48 (constant_string)
+
+
+State 24
+
+   49 constant_string: TC_WHITESPACE .
+
+    $default  reduce using rule 49 (constant_string)
+
+
+State 25
+
+   28 var_string_list: '"' . encapsed_list '"'
+
+    $default  reduce using rule 19 (encapsed_list)
+
+    encapsed_list  go to state 46
+
+
+State 26
+
+    5 statement: TC_OFFSET option_offset . ']' '=' string_or_value
+
+    ']'  shift, and go to state 47
+
+
+State 27
+
+   15 option_offset: var_string_list .
+   29 var_string_list: var_string_list . cfg_var_ref
+   30                | var_string_list . constant_string
+   31                | var_string_list . '"' encapsed_list '"'
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 48
+
+    $default  reduce using rule 15 (option_offset)
+
+    cfg_var_ref      go to state 49
+    constant_string  go to state 50
+
+
+State 28
+
+   26 var_string_list: cfg_var_ref .
+
+    $default  reduce using rule 26 (var_string_list)
+
+
+State 29
+
+   27 var_string_list: constant_string .
+
+    $default  reduce using rule 27 (var_string_list)
+
+
+State 30
+
+   39 cfg_var_ref: TC_DOLLAR_CURLY TC_VARNAME . '}'
+
+    '}'  shift, and go to state 51
+
+
+State 31
+
+   17 encapsed_list: encapsed_list . cfg_var_ref
+   18              | encapsed_list . TC_QUOTED_STRING
+   22 var_string_list_section: '"' encapsed_list . '"'
+
+    TC_DOLLAR_CURLY   shift, and go to state 13
+    TC_QUOTED_STRING  shift, and go to state 52
+    '"'               shift, and go to state 53
+
+    cfg_var_ref  go to state 54
+
+
+State 32
+
+    3 statement: TC_SECTION section_string_or_value ']' .
+
+    $default  reduce using rule 3 (statement)
+
+
+State 33
+
+   25 var_string_list_section: var_string_list_section '"' . encapsed_list '"'
+
+    $default  reduce using rule 19 (encapsed_list)
+
+    encapsed_list  go to state 55
+
+
+State 34
+
+   23 var_string_list_section: var_string_list_section cfg_var_ref .
+
+    $default  reduce using rule 23 (var_string_list_section)
+
+
+State 35
+
+   24 var_string_list_section: var_string_list_section constant_literal .
+
+    $default  reduce using rule 24 (var_string_list_section)
+
+
+State 36
+
+   11 string_or_value: BOOL_TRUE .
+
+    $default  reduce using rule 11 (string_or_value)
+
+
+State 37
+
+   12 string_or_value: BOOL_FALSE .
+
+    $default  reduce using rule 12 (string_or_value)
+
+
+State 38
+
+   13 string_or_value: NULL_NULL .
+
+    $default  reduce using rule 13 (string_or_value)
+
+
+State 39
+
+   14 string_or_value: END_OF_LINE .
+
+    $default  reduce using rule 14 (string_or_value)
+
+
+State 40
+
+   36 expr: '~' . expr
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    var_string_list  go to state 44
+    expr             go to state 56
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 41
+
+   37 expr: '!' . expr
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    var_string_list  go to state 44
+    expr             go to state 57
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 42
+
+   38 expr: '(' . expr ')'
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    var_string_list  go to state 44
+    expr             go to state 58
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 43
+
+    4 statement: TC_LABEL '=' string_or_value .
+
+    $default  reduce using rule 4 (statement)
+
+
+State 44
+
+   29 var_string_list: var_string_list . cfg_var_ref
+   30                | var_string_list . constant_string
+   31                | var_string_list . '"' encapsed_list '"'
+   32 expr: var_string_list .
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 48
+
+    $default  reduce using rule 32 (expr)
+
+    cfg_var_ref      go to state 49
+    constant_string  go to state 50
+
+
+State 45
+
+   10 string_or_value: expr .
+   33 expr: expr . '|' expr
+   34     | expr . '&' expr
+   35     | expr . '^' expr
+
+    '^'  shift, and go to state 59
+    '|'  shift, and go to state 60
+    '&'  shift, and go to state 61
+
+    $default  reduce using rule 10 (string_or_value)
+
+
+State 46
+
+   17 encapsed_list: encapsed_list . cfg_var_ref
+   18              | encapsed_list . TC_QUOTED_STRING
+   28 var_string_list: '"' encapsed_list . '"'
+
+    TC_DOLLAR_CURLY   shift, and go to state 13
+    TC_QUOTED_STRING  shift, and go to state 52
+    '"'               shift, and go to state 62
+
+    cfg_var_ref  go to state 54
+
+
+State 47
+
+    5 statement: TC_OFFSET option_offset ']' . '=' string_or_value
+
+    '='  shift, and go to state 63
+
+
+State 48
+
+   31 var_string_list: var_string_list '"' . encapsed_list '"'
+
+    $default  reduce using rule 19 (encapsed_list)
+
+    encapsed_list  go to state 64
+
+
+State 49
+
+   29 var_string_list: var_string_list cfg_var_ref .
+
+    $default  reduce using rule 29 (var_string_list)
+
+
+State 50
+
+   30 var_string_list: var_string_list constant_string .
+
+    $default  reduce using rule 30 (var_string_list)
+
+
+State 51
+
+   39 cfg_var_ref: TC_DOLLAR_CURLY TC_VARNAME '}' .
+
+    $default  reduce using rule 39 (cfg_var_ref)
+
+
+State 52
+
+   18 encapsed_list: encapsed_list TC_QUOTED_STRING .
+
+    $default  reduce using rule 18 (encapsed_list)
+
+
+State 53
+
+   22 var_string_list_section: '"' encapsed_list '"' .
+
+    $default  reduce using rule 22 (var_string_list_section)
+
+
+State 54
+
+   17 encapsed_list: encapsed_list cfg_var_ref .
+
+    $default  reduce using rule 17 (encapsed_list)
+
+
+State 55
+
+   17 encapsed_list: encapsed_list . cfg_var_ref
+   18              | encapsed_list . TC_QUOTED_STRING
+   25 var_string_list_section: var_string_list_section '"' encapsed_list . '"'
+
+    TC_DOLLAR_CURLY   shift, and go to state 13
+    TC_QUOTED_STRING  shift, and go to state 52
+    '"'               shift, and go to state 65
+
+    cfg_var_ref  go to state 54
+
+
+State 56
+
+   33 expr: expr . '|' expr
+   34     | expr . '&' expr
+   35     | expr . '^' expr
+   36     | '~' expr .
+
+    $default  reduce using rule 36 (expr)
+
+
+State 57
+
+   33 expr: expr . '|' expr
+   34     | expr . '&' expr
+   35     | expr . '^' expr
+   37     | '!' expr .
+
+    $default  reduce using rule 37 (expr)
+
+
+State 58
+
+   33 expr: expr . '|' expr
+   34     | expr . '&' expr
+   35     | expr . '^' expr
+   38     | '(' expr . ')'
+
+    '^'  shift, and go to state 59
+    '|'  shift, and go to state 60
+    '&'  shift, and go to state 61
+    ')'  shift, and go to state 66
+
+
+State 59
+
+   35 expr: expr '^' . expr
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    var_string_list  go to state 44
+    expr             go to state 67
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 60
+
+   33 expr: expr '|' . expr
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    var_string_list  go to state 44
+    expr             go to state 68
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 61
+
+   34 expr: expr '&' . expr
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    var_string_list  go to state 44
+    expr             go to state 69
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 62
+
+   28 var_string_list: '"' encapsed_list '"' .
+
+    $default  reduce using rule 28 (var_string_list)
+
+
+State 63
+
+    5 statement: TC_OFFSET option_offset ']' '=' . string_or_value
+
+    TC_RAW           shift, and go to state 20
+    TC_CONSTANT      shift, and go to state 21
+    TC_NUMBER        shift, and go to state 22
+    TC_STRING        shift, and go to state 23
+    TC_WHITESPACE    shift, and go to state 24
+    TC_DOLLAR_CURLY  shift, and go to state 13
+    BOOL_TRUE        shift, and go to state 36
+    BOOL_FALSE       shift, and go to state 37
+    NULL_NULL        shift, and go to state 38
+    END_OF_LINE      shift, and go to state 39
+    '"'              shift, and go to state 25
+    '~'              shift, and go to state 40
+    '!'              shift, and go to state 41
+    '('              shift, and go to state 42
+
+    string_or_value  go to state 70
+    var_string_list  go to state 44
+    expr             go to state 45
+    cfg_var_ref      go to state 28
+    constant_string  go to state 29
+
+
+State 64
+
+   17 encapsed_list: encapsed_list . cfg_var_ref
+   18              | encapsed_list . TC_QUOTED_STRING
+   31 var_string_list: var_string_list '"' encapsed_list . '"'
+
+    TC_DOLLAR_CURLY   shift, and go to state 13
+    TC_QUOTED_STRING  shift, and go to state 52
+    '"'               shift, and go to state 71
+
+    cfg_var_ref  go to state 54
+
+
+State 65
+
+   25 var_string_list_section: var_string_list_section '"' encapsed_list '"' .
+
+    $default  reduce using rule 25 (var_string_list_section)
+
+
+State 66
+
+   38 expr: '(' expr ')' .
+
+    $default  reduce using rule 38 (expr)
+
+
+State 67
+
+   33 expr: expr . '|' expr
+   34     | expr . '&' expr
+   35     | expr . '^' expr
+   35     | expr '^' expr .
+
+    $default  reduce using rule 35 (expr)
+
+
+State 68
+
+   33 expr: expr . '|' expr
+   33     | expr '|' expr .
+   34     | expr . '&' expr
+   35     | expr . '^' expr
+
+    $default  reduce using rule 33 (expr)
+
+
+State 69
+
+   33 expr: expr . '|' expr
+   34     | expr . '&' expr
+   34     | expr '&' expr .
+   35     | expr . '^' expr
+
+    $default  reduce using rule 34 (expr)
+
+
+State 70
+
+    5 statement: TC_OFFSET option_offset ']' '=' string_or_value .
+
+    $default  reduce using rule 5 (statement)
+
+
+State 71
+
+   31 var_string_list: var_string_list '"' encapsed_list '"' .
+
+    $default  reduce using rule 31 (var_string_list)

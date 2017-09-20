@@ -1,0 +1,3694 @@
+diff -u libmagic.orig/apprentice.c libmagic/apprentice.c
+--- libmagic.orig/apprentice.c	2017-04-10 11:41:09.731268025 +0800
++++ libmagic/apprentice.c	2017-04-10 11:43:17.272811417 +0800
+@@ -29,6 +29,8 @@
+  * apprentice - make one pass through /etc/magic, learning its secrets.
+  */
+ 
++#include "php.h"
++
+ #include "file.h"
+ 
+ #ifndef	lint
+@@ -36,24 +38,27 @@
+ #endif	/* lint */
+ 
+ #include "magic.h"
++#include "patchlevel.h"
+ #include <stdlib.h>
+-#ifdef HAVE_UNISTD_H
+-#include <unistd.h>
++
++#if defined(__hpux) && !defined(HAVE_STRTOULL)
++#if SIZEOF_LONG == 8
++# define strtoull strtoul
++#else
++# define strtoull __strtoull
+ #endif
+-#ifdef HAVE_STDDEF_H
+-#include <stddef.h>
++#endif
++
++#ifdef PHP_WIN32
++#include "win32/unistd.h"
++#define strtoull _strtoui64
++#else
++#include <unistd.h>
+ #endif
+ #include <string.h>
+ #include <assert.h>
+ #include <ctype.h>
+ #include <fcntl.h>
+-#ifdef QUICK
+-#include <sys/mman.h>
+-#endif
+-#include <dirent.h>
+-#if defined(HAVE_LIMITS_H)
+-#include <limits.h>
+-#endif
+ 
+ #ifndef SSIZE_MAX
+ #define MAXMAGIC_SIZE        ((ssize_t)0x7fffffff)
+@@ -75,6 +80,10 @@
+ #endif
+ #endif
+ 
++#ifndef offsetof
++#define offsetof(STRUCTURE,FIELD) ((int)((char*)&((STRUCTURE*)0)->FIELD))
++#endif
++
+ #ifndef MAP_FAILED
+ #define MAP_FAILED (void *) -1
+ #endif
+@@ -168,38 +177,7 @@
+ 	{ NULL, 0, NULL }
+ };
+ 
+-#ifdef COMPILE_ONLY
+-
+-int main(int, char *[]);
+-
+-int
+-main(int argc, char *argv[])
+-{
+-	int ret;
+-	struct magic_set *ms;
+-	char *progname;
+-
+-	if ((progname = strrchr(argv[0], '/')) != NULL)
+-		progname++;
+-	else
+-		progname = argv[0];
+-
+-	if (argc != 2) {
+-		(void)fprintf(stderr, "Usage: %s file\n", progname);
+-		return 1;
+-	}
+-
+-	if ((ms = magic_open(MAGIC_CHECK)) == NULL) {
+-		(void)fprintf(stderr, "%s: %s\n", progname, strerror(errno));
+-		return 1;
+-	}
+-	ret = magic_compile(ms, argv[1]) == -1 ? 1 : 0;
+-	if (ret == 1)
+-		(void)fprintf(stderr, "%s: %s\n", progname, magic_error(ms));
+-	magic_close(ms);
+-	return ret;
+-}
+-#endif /* COMPILE_ONLY */
++#include "../data_file.c"
+ 
+ struct type_tbl_s {
+ 	const char name[16];
+@@ -281,6 +259,10 @@
+ # undef XX
+ # undef XX_NULL
+ 
++#ifndef S_ISDIR
++#define S_ISDIR(mode) ((mode) & _S_IFDIR)
++#endif
++
+ private int
+ get_type(const struct type_tbl_s *tbl, const char *l, const char **t)
+ {
+@@ -405,7 +387,7 @@
+ 	struct mlist *ml;
+ 
+ 	mlp->map = idx == 0 ? map : NULL;
+-	if ((ml = CAST(struct mlist *, malloc(sizeof(*ml)))) == NULL)
++	if ((ml = CAST(struct mlist *, emalloc(sizeof(*ml)))) == NULL)
+ 		return -1;
+ 
+ 	ml->map = NULL;
+@@ -426,10 +408,8 @@
+ apprentice_1(struct magic_set *ms, const char *fn, int action)
+ {
+ 	struct magic_map *map;
+-#ifndef COMPILE_ONLY
+ 	struct mlist *ml;
+ 	size_t i;
+-#endif
+ 
+ 	if (magicsize != FILE_MAGICSIZE) {
+ 		file_error(ms, 0, "magic element size %lu != %lu",
+@@ -445,12 +425,13 @@
+ 		return apprentice_compile(ms, map, fn);
+ 	}
+ 
+-#ifndef COMPILE_ONLY
+ 	map = apprentice_map(ms, fn);
+ 	if (map == NULL) {
+-		if (ms->flags & MAGIC_CHECK)
+-			file_magwarn(ms, "using regular magic file `%s'", fn);
+-		map = apprentice_load(ms, fn, action);
++		if (fn) {
++			if (ms->flags & MAGIC_CHECK)
++				file_magwarn(ms, "using regular magic file `%s'", fn);
++			map = apprentice_load(ms, fn, action);
++		}
+ 		if (map == NULL)
+ 			return -1;
+ 	}
+@@ -458,7 +439,8 @@
+ 	for (i = 0; i < MAGIC_SETS; i++) {
+ 		if (add_mlist(ms->mlist[i], map, i) == -1) {
+ 			file_oomem(ms, sizeof(*ml));
+-			goto fail;
++			apprentice_unmap(map);
++			return -1;
+ 		}
+ 	}
+ 
+@@ -472,15 +454,6 @@
+ 		}
+ 	}
+ 	return 0;
+-fail:
+-	for (i = 0; i < MAGIC_SETS; i++) {
+-		mlist_free(ms->mlist[i]);
+-		ms->mlist[i] = NULL;
+-	}
+-	return -1;
+-#else
+-	return 0;
+-#endif /* COMPILE_ONLY */
+ }
+ 
+ protected void
+@@ -491,10 +464,16 @@
+ 		return;
+ 	for (i = 0; i < MAGIC_SETS; i++)
+ 		mlist_free(ms->mlist[i]);
+-	free(ms->o.pbuf);
+-	free(ms->o.buf);
+-	free(ms->c.li);
+-	free(ms);
++	if (ms->o.pbuf) {
++		efree(ms->o.pbuf);
++	}
++	if (ms->o.buf) {
++		efree(ms->o.buf);
++	}
++	if (ms->c.li) {
++		efree(ms->c.li);
++	}
++	efree(ms);
+ }
+ 
+ protected struct magic_set *
+@@ -503,7 +482,7 @@
+ 	struct magic_set *ms;
+ 	size_t i, len;
+ 
+-	if ((ms = CAST(struct magic_set *, calloc((size_t)1,
++	if ((ms = CAST(struct magic_set *, ecalloc((size_t)1,
+ 	    sizeof(struct magic_set)))) == NULL)
+ 		return NULL;
+ 
+@@ -515,7 +494,7 @@
+ 	ms->o.buf = ms->o.pbuf = NULL;
+ 	len = (ms->c.len = 10) * sizeof(*ms->c.li);
+ 
+-	if ((ms->c.li = CAST(struct level_info *, malloc(len))) == NULL)
++	if ((ms->c.li = CAST(struct level_info *, emalloc(len))) == NULL)
+ 		goto free;
+ 
+ 	ms->event_flags = 0;
+@@ -531,7 +510,7 @@
+ 	ms->elf_notes_max = FILE_ELF_NOTES_MAX;
+ 	return ms;
+ free:
+-	free(ms);
++	efree(ms);
+ 	return NULL;
+ }
+ 
+@@ -540,30 +519,26 @@
+ {
+ 	if (map == NULL)
+ 		return;
+-
+-	switch (map->type) {
+-#ifdef QUICK
+-	case MAP_TYPE_MMAP:
+-		if (map->p)
+-			(void)munmap(map->p, map->len);
+-		break;
+-#endif
+-	case MAP_TYPE_MALLOC:
+-		free(map->p);
+-		break;
+-	case MAP_TYPE_USER:
+-		break;
+-	default:
+-		abort();
++	if (map->p != php_magic_database) {
++		if (map->p == NULL) {
++			int j;
++			for (j = 0; j < MAGIC_SETS; j++) {
++				if (map->magic[j]) {
++					efree(map->magic[j]);
++				}
++			}
++		} else {
++			efree(map->p);
++		}
+ 	}
+-	free(map);
++	efree(map);
+ }
+ 
+ private struct mlist *
+ mlist_alloc(void)
+ {
+ 	struct mlist *mlist;
+-	if ((mlist = CAST(struct mlist *, calloc(1, sizeof(*mlist)))) == NULL) {
++	if ((mlist = CAST(struct mlist *, ecalloc(1, sizeof(*mlist)))) == NULL) {
+ 		return NULL;
+ 	}
+ 	mlist->next = mlist->prev = mlist;
+@@ -582,61 +557,12 @@
+ 	for (ml = mlist->next; (next = ml->next) != NULL; ml = next) {
+ 		if (ml->map)
+ 			apprentice_unmap(ml->map);
+-		free(ml);
++		efree(ml);
+ 		if (ml == mlist)
+ 			break;
+ 	}
+ }
+ 
+-#ifndef COMPILE_ONLY
+-/* void **bufs: an array of compiled magic files */
+-protected int
+-buffer_apprentice(struct magic_set *ms, struct magic **bufs,
+-    size_t *sizes, size_t nbufs)
+-{
+-	size_t i, j;
+-	struct mlist *ml;
+-	struct magic_map *map;
+-
+-	if (nbufs == 0)
+-		return -1;
+-
+-	if (ms->mlist[0] != NULL)
+-		file_reset(ms);
+-
+-	init_file_tables();
+-
+-	for (i = 0; i < MAGIC_SETS; i++) {
+-		mlist_free(ms->mlist[i]);
+-		if ((ms->mlist[i] = mlist_alloc()) == NULL) {
+-			file_oomem(ms, sizeof(*ms->mlist[i]));
+-			goto fail;
+-		}
+-	}
+-
+-	for (i = 0; i < nbufs; i++) {
+-		map = apprentice_buf(ms, bufs[i], sizes[i]);
+-		if (map == NULL)
+-			goto fail;
+-
+-		for (j = 0; j < MAGIC_SETS; j++) {
+-			if (add_mlist(ms->mlist[j], map, j) == -1) {
+-				file_oomem(ms, sizeof(*ml));
+-				goto fail;
+-			}
+-		}
+-	}
+-
+-	return 0;
+-fail:
+-	for (i = 0; i < MAGIC_SETS; i++) {
+-		mlist_free(ms->mlist[i]);
+-		ms->mlist[i] = NULL;
+-	}
+-	return -1;
+-}
+-#endif
+-
+ /* const char *fn: list of magic files and directories */
+ protected int
+ file_apprentice(struct magic_set *ms, const char *fn, int action)
+@@ -648,12 +574,28 @@
+ 	if (ms->mlist[0] != NULL)
+ 		file_reset(ms);
+ 
++/* XXX disabling default magic loading so the compiled in data is used */
++#if 0
+ 	if ((fn = magic_getpath(fn, action)) == NULL)
+ 		return -1;
++#endif
+ 
+ 	init_file_tables();
+ 
+-	if ((mfn = strdup(fn)) == NULL) {
++	if (fn == NULL)
++		fn = getenv("MAGIC");
++	if (fn == NULL) {
++		for (i = 0; i < MAGIC_SETS; i++) {
++			mlist_free(ms->mlist[i]);
++			if ((ms->mlist[i] = mlist_alloc()) == NULL) {
++				file_oomem(ms, sizeof(*ms->mlist[i]));
++				return -1;
++			}
++		}
++		return apprentice_1(ms, fn, action);
++	}
++
++	if ((mfn = estrdup(fn)) == NULL) {
+ 		file_oomem(ms, strlen(fn));
+ 		return -1;
+ 	}
+@@ -666,7 +608,7 @@
+ 				mlist_free(ms->mlist[i]);
+ 				ms->mlist[i] = NULL;
+ 			}
+-			free(mfn);
++			efree(mfn);
+ 			return -1;
+ 		}
+ 	}
+@@ -683,7 +625,7 @@
+ 		fn = p;
+ 	}
+ 
+-	free(mfn);
++	efree(mfn);
+ 
+ 	if (errs == -1) {
+ 		for (i = 0; i < MAGIC_SETS; i++) {
+@@ -1062,7 +1004,7 @@
+ 
+ 		mset[i].max += ALLOC_INCR;
+ 		if ((mp = CAST(struct magic_entry *,
+-		    realloc(mset[i].me, sizeof(*mp) * mset[i].max))) ==
++		    erealloc(mset[i].me, sizeof(*mp) * mset[i].max))) ==
+ 		    NULL) {
+ 			file_oomem(ms, sizeof(*mp) * mset[i].max);
+ 			return -1;
+@@ -1083,13 +1025,19 @@
+ load_1(struct magic_set *ms, int action, const char *fn, int *errs,
+    struct magic_entry_set *mset)
+ {
+-	size_t lineno = 0, llen = 0;
++	char buffer[BUFSIZ + 1];
+ 	char *line = NULL;
+-	ssize_t len;
++	size_t len;
++	size_t lineno = 0;
+ 	struct magic_entry me;
+ 
+-	FILE *f = fopen(ms->file = fn, "r");
+-	if (f == NULL) {
++	php_stream *stream;
++
++
++	ms->file = fn;
++	stream = php_stream_open_wrapper((char *)fn, "rb", REPORT_ERRORS, NULL);
++
++	if (stream == NULL) {
+ 		if (errno != ENOENT)
+ 			file_error(ms, errno, "cannot read magic file `%s'",
+ 				   fn);
+@@ -1099,8 +1047,7 @@
+ 
+ 	memset(&me, 0, sizeof(me));
+ 	/* read and parse this file */
+-	for (ms->line = 1; (len = getline(&line, &llen, f)) != -1;
+-	    ms->line++) {
++	for (ms->line = 1; (line = php_stream_get_line(stream, buffer , BUFSIZ, &len)) != NULL; ms->line++) {
+ 		if (len == 0) /* null line, garbage, etc */
+ 			continue;
+ 		if (line[len - 1] == '\n') {
+@@ -1158,8 +1105,8 @@
+ 	}
+ 	if (me.mp)
+ 		(void)addentry(ms, &me, mset);
+-	free(line);
+-	(void)fclose(f);
++    efree(line);
++	php_stream_close(stream);
+ }
+ 
+ /*
+@@ -1238,7 +1185,7 @@
+ 		mentrycount += me[i].cont_count;
+ 
+ 	slen = sizeof(**ma) * mentrycount;
+-	if ((*ma = CAST(struct magic *, malloc(slen))) == NULL) {
++	if ((*ma = CAST(struct magic *, emalloc(slen))) == NULL) {
+ 		file_oomem(ms, slen);
+ 		return -1;
+ 	}
+@@ -1260,8 +1207,8 @@
+ 	if (me == NULL)
+ 		return;
+ 	for (i = 0; i < nme; i++)
+-		free(me[i].mp);
+-	free(me);
++		efree(me[i].mp);
++	efree(me);
+ }
+ 
+ private struct magic_map *
+@@ -1270,18 +1217,19 @@
+ 	int errs = 0;
+ 	uint32_t i, j;
+ 	size_t files = 0, maxfiles = 0;
+-	char **filearr = NULL, *mfn;
+-	struct stat st;
++	char **filearr = NULL;
++	zend_stat_t st;
+ 	struct magic_map *map;
+ 	struct magic_entry_set mset[MAGIC_SETS];
+-	DIR *dir;
+-	struct dirent *d;
++	php_stream *dir;
++	php_stream_dirent d;
++ 
+ 
+ 	memset(mset, 0, sizeof(mset));
+ 	ms->flags |= MAGIC_CHECK;	/* Enable checks for parsed files */
+ 
+ 
+-	if ((map = CAST(struct magic_map *, calloc(1, sizeof(*map)))) == NULL)
++	if ((map = CAST(struct magic_map *, ecalloc(1, sizeof(*map)))) == NULL)
+ 	{
+ 		file_oomem(ms, sizeof(*map));
+ 		return NULL;
+@@ -1292,22 +1240,26 @@
+ 		(void)fprintf(stderr, "%s\n", usg_hdr);
+ 
+ 	/* load directory or file */
+-	if (stat(fn, &st) == 0 && S_ISDIR(st.st_mode)) {
+-		dir = opendir(fn);
++	/* FIXME: Read file names and sort them to prevent
++	   non-determinism. See Debian bug #488562. */
++	if (php_sys_stat(fn, &st) == 0 && S_ISDIR(st.st_mode)) {
++		int mflen;
++		char mfn[MAXPATHLEN];
++
++		dir = php_stream_opendir((char *)fn, REPORT_ERRORS, NULL);
+ 		if (!dir) {
+ 			errs++;
+ 			goto out;
+ 		}
+-		while ((d = readdir(dir)) != NULL) {
+-			if (asprintf(&mfn, "%s/%s", fn, d->d_name) < 0) {
++		while (php_stream_readdir(dir, &d)) {
++			if ((mflen = snprintf(mfn, sizeof(mfn), "%s/%s", fn, d.d_name)) < 0) {
+ 				file_oomem(ms,
+-				    strlen(fn) + strlen(d->d_name) + 2);
++				strlen(fn) + strlen(d.d_name) + 2);
+ 				errs++;
+-				closedir(dir);
++				php_stream_closedir(dir);
+ 				goto out;
+ 			}
+-			if (stat(mfn, &st) == -1 || !S_ISREG(st.st_mode)) {
+-				free(mfn);
++			if (zend_stat(mfn, &st) == -1 || !S_ISREG(st.st_mode)) {
+ 				continue;
+ 			}
+ 			if (files >= maxfiles) {
+@@ -1315,23 +1267,22 @@
+ 				maxfiles = (maxfiles + 1) * 2;
+ 				mlen = maxfiles * sizeof(*filearr);
+ 				if ((filearr = CAST(char **,
+-				    realloc(filearr, mlen))) == NULL) {
++				    erealloc(filearr, mlen))) == NULL) {
+ 					file_oomem(ms, mlen);
+-					free(mfn);
+-					closedir(dir);
++					php_stream_closedir(dir);
+ 					errs++;
+ 					goto out;
+ 				}
+ 			}
+-			filearr[files++] = mfn;
++			filearr[files++] = estrndup(mfn, (mflen > sizeof(mfn) - 1)? sizeof(mfn) - 1: mflen);
+ 		}
+-		closedir(dir);
++		php_stream_closedir(dir);
+ 		qsort(filearr, files, sizeof(*filearr), cmpstrp);
+ 		for (i = 0; i < files; i++) {
+ 			load_1(ms, action, filearr[i], &errs, mset);
+-			free(filearr[i]);
++			efree(filearr[i]);
+ 		}
+-		free(filearr);
++		efree(filearr);
+ 	} else
+ 		load_1(ms, action, fn, &errs, mset);
+ 	if (errs)
+@@ -1796,7 +1747,7 @@
+ 		if (me->cont_count == me->max_count) {
+ 			struct magic *nm;
+ 			size_t cnt = me->max_count + ALLOC_CHUNK;
+-			if ((nm = CAST(struct magic *, realloc(me->mp,
++			if ((nm = CAST(struct magic *, erealloc(me->mp,
+ 			    sizeof(*nm) * cnt))) == NULL) {
+ 				file_oomem(ms, sizeof(*nm) * cnt);
+ 				return -1;
+@@ -1811,7 +1762,7 @@
+ 		static const size_t len = sizeof(*m) * ALLOC_CHUNK;
+ 		if (me->mp != NULL)
+ 			return 1;
+-		if ((m = CAST(struct magic *, malloc(len))) == NULL) {
++		if ((m = CAST(struct magic *, emalloc(len))) == NULL) {
+ 			file_oomem(ms, len);
+ 			return -1;
+ 		}
+@@ -1984,7 +1935,7 @@
+ 				m->type = get_standard_integer_type(l, &l);
+ 			else if (*l == 's' && !isalpha((unsigned char)l[1])) {
+ 				m->type = FILE_STRING;
+-				++l;
++		++l;
+ 			}
+ 		}
+ 	}
+@@ -2005,7 +1956,7 @@
+ 
+ 	m->mask_op = 0;
+ 	if (*l == '~') {
+-		if (!IS_STRING(m->type))
++		if (!IS_LIBMAGIC_STRING(m->type))
+ 			m->mask_op |= FILE_OPINVERSE;
+ 		else if (ms->flags & MAGIC_CHECK)
+ 			file_magwarn(ms, "'~' invalid for string types");
+@@ -2014,7 +1965,7 @@
+ 	m->str_range = 0;
+ 	m->str_flags = m->type == FILE_PSTRING ? PSTRING_1_LE : 0;
+ 	if ((op = get_op(*l)) != -1) {
+-		if (IS_STRING(m->type)) {
++		if (IS_LIBMAGIC_STRING(m->type)) {
+ 			int r;
+ 
+ 			if (op != FILE_OPDIVIDE) {
+@@ -2119,11 +2070,6 @@
+ 		if (check_format(ms, m) == -1)
+ 			return -1;
+ 	}
+-#ifndef COMPILE_ONLY
+-	if (action == FILE_CHECK) {
+-		file_mdump(m);
+-	}
+-#endif
+ 	m->mimetype[0] = '\0';		/* initialise MIME type to none */
+ 	return 0;
+ }
+@@ -2195,7 +2141,7 @@
+ 
+ private int
+ parse_extra(struct magic_set *ms, struct magic_entry *me, const char *line,
+-    off_t off, size_t len, const char *name, const char *extra, int nt)
++    zend_off_t off, size_t len, const char *name, const char *extra, int nt)
+ {
+ 	size_t i;
+ 	const char *l = line;
+@@ -2264,7 +2210,7 @@
+ 	struct magic *m = &me->mp[0];
+ 
+ 	return parse_extra(ms, me, line,
+-	    CAST(off_t, offsetof(struct magic, mimetype)),
++	    CAST(zend_off_t, offsetof(struct magic, mimetype)),
+ 	    sizeof(m->mimetype), "MIME", "+-/.", 1);
+ }
+ 
+@@ -2517,14 +2463,18 @@
+ 			return -1;
+ 		}
+ 		if (m->type == FILE_REGEX) {
+-			file_regex_t rx;
+-			int rc = file_regcomp(&rx, m->value.s, REG_EXTENDED);
+-			if (rc) {
+-				if (ms->flags & MAGIC_CHECK)
+-					file_regerror(&rx, rc, ms);
++			/*  XXX do we need this? */
++			/*zval pattern;
++			int options = 0;
++			pcre_cache_entry *pce;
++
++			convert_libmagic_pattern(&pattern, m->value.s, strlen(m->value.s), options);
++
++			if ((pce = pcre_get_compiled_regex_cache(Z_STR(pattern))) == NULL) {
++				return -1;	
+ 			}
+-			file_regfree(&rx);
+-			return rc ? -1 : 0;
++
++			return 0;*/
+ 		}
+ 		return 0;
+ 	case FILE_FLOAT:
+@@ -2854,68 +2804,144 @@
+ private struct magic_map *
+ apprentice_map(struct magic_set *ms, const char *fn)
+ {
+-	int fd;
+-	struct stat st;
++	uint32_t *ptr;
++	uint32_t version, entries, nentries;
++	int needsbyteswap;
+ 	char *dbname = NULL;
+ 	struct magic_map *map;
++	size_t i;
++	php_stream *stream = NULL;
++	php_stream_statbuf st;
+ 
+-	fd = -1;
+-	if ((map = CAST(struct magic_map *, calloc(1, sizeof(*map)))) == NULL) {
++
++
++	if ((map = CAST(struct magic_map *, ecalloc(1, sizeof(*map)))) == NULL) {
+ 		file_oomem(ms, sizeof(*map));
+-		goto error;
++		return NULL;
+ 	}
+ 
++	if (fn == NULL) {
++		map->p = (void *)&php_magic_database;
++		goto internal_loaded;
++	}
++
++#ifdef PHP_WIN32
++	/* Don't bother on windows with php_stream_open_wrapper,
++	return to give apprentice_load() a chance. */
++	if (php_stream_stat_path_ex((char *)fn, 0, &st, NULL) == SUCCESS) {
++               if (st.sb.st_mode & S_IFDIR) {
++                       return NULL;
++               }
++       }
++#endif
++
+ 	dbname = mkdbname(ms, fn, 0);
+ 	if (dbname == NULL)
+ 		goto error;
+ 
+-	if ((fd = open(dbname, O_RDONLY|O_BINARY)) == -1)
++		stream = php_stream_open_wrapper((char *)fn, "rb", REPORT_ERRORS, NULL);
++
++	if (!stream) {
+ 		goto error;
++	}
+ 
+-	if (fstat(fd, &st) == -1) {
++	if (php_stream_stat(stream, &st) < 0) {
+ 		file_error(ms, errno, "cannot stat `%s'", dbname);
+ 		goto error;
+ 	}
+-	if (st.st_size < 8 || st.st_size > MAXMAGIC_SIZE) {
++	if (st.sb.st_size < 8 || st.sb.st_size > MAXMAGIC_SIZE) {
+ 		file_error(ms, 0, "file `%s' is too %s", dbname,
+-		    st.st_size < 8 ? "small" : "large");
++		    st.sb.st_size < 8 ? "small" : "large");
+ 		goto error;
+ 	}
+ 
+-	map->len = (size_t)st.st_size;
+-#ifdef QUICK
+-	if ((map->p = mmap(0, (size_t)st.st_size, PROT_READ|PROT_WRITE,
+-	    MAP_PRIVATE|MAP_FILE, fd, (off_t)0)) == MAP_FAILED) {
+-		file_error(ms, errno, "cannot map `%s'", dbname);
+-		goto error;
+-	}
+-	map->type = MAP_TYPE_MMAP;
+-#else
+-	if ((map->p = CAST(void *, malloc(map->len))) == NULL) {
++	map->len = (size_t)st.sb.st_size;
++	if ((map->p = CAST(void *, emalloc(map->len))) == NULL) {
+ 		file_oomem(ms, map->len);
+ 		goto error;
+ 	}
+-	if (read(fd, map->p, map->len) != (ssize_t)map->len) {
++	if (php_stream_read(stream, map->p, (size_t)st.sb.st_size) != (size_t)st.sb.st_size) {
+ 		file_badread(ms);
+ 		goto error;
+ 	}
+-	map->type = MAP_TYPE_MALLOC;
++	map->len = 0;
+ #define RET	1
+-#endif
+-	(void)close(fd);
+-	fd = -1;
+ 
+-	if (check_buffer(ms, map, dbname) != 0)
++	php_stream_close(stream);
++	stream = NULL;
++
++internal_loaded:
++	ptr = (uint32_t *)(void *)map->p;
++	if (*ptr != MAGICNO) {
++		if (swap4(*ptr) != MAGICNO) {
++			file_error(ms, 0, "bad magic in `%s'", dbname);
++			goto error;
++		}
++		needsbyteswap = 1;
++	} else
++		needsbyteswap = 0;
++	if (needsbyteswap)
++		version = swap4(ptr[1]);
++	else
++		version = ptr[1];
++	if (version != VERSIONNO) {
++		file_error(ms, 0, "File %d.%d supports only version %d magic "
++		    "files. `%s' is version %d", FILE_VERSION_MAJOR, patchlevel,
++		    VERSIONNO, dbname, version);
+ 		goto error;
++	}
+ 
+-	free(dbname);
++	/* php_magic_database is a const, performing writes will segfault. This is for big-endian
++	machines only, PPC and Sparc specifically. Consider static variable or MINIT in
++	future. */
++	if (needsbyteswap && fn == NULL) {
++		map->p = emalloc(sizeof(php_magic_database));
++		map->p = memcpy(map->p, php_magic_database, sizeof(php_magic_database));
++	}
++
++	if (NULL != fn) {
++		nentries = (uint32_t)(st.sb.st_size / sizeof(struct magic));
++		entries = (uint32_t)(st.sb.st_size / sizeof(struct magic));
++		if ((zend_off_t)(entries * sizeof(struct magic)) != st.sb.st_size) {
++			file_error(ms, 0, "Size of `%s' %llu is not a multiple of %zu",
++				dbname, (unsigned long long)st.sb.st_size,
++				sizeof(struct magic));
++			goto error;
++		}
++	}
++	map->magic[0] = CAST(struct magic *, map->p) + 1;
++	nentries = 0;
++	for (i = 0; i < MAGIC_SETS; i++) {
++		if (needsbyteswap)
++			map->nmagic[i] = swap4(ptr[i + 2]);
++		else
++			map->nmagic[i] = ptr[i + 2];
++		if (i != MAGIC_SETS - 1)
++			map->magic[i + 1] = map->magic[i] + map->nmagic[i];
++		nentries += map->nmagic[i];
++	}
++	if (NULL != fn && entries != nentries + 1) {
++		file_error(ms, 0, "Inconsistent entries in `%s' %u != %u",
++		    dbname, entries, nentries + 1);
++		goto error;
++	}
++	if (needsbyteswap)
++		for (i = 0; i < MAGIC_SETS; i++)
++			byteswap(map->magic[i], map->nmagic[i]);
++
++	if (dbname) {
++		efree(dbname);
++	}
+ 	return map;
+ 
+ error:
+-	if (fd != -1)
+-		(void)close(fd);
++	if (stream) {
++		php_stream_close(stream);
++	}
+ 	apprentice_unmap(map);
+-	free(dbname);
++	if (dbname) {
++		efree(dbname);
++	}
+ 	return NULL;
+ }
+ 
+@@ -2942,7 +2968,7 @@
+ 		version = ptr[1];
+ 	if (version != VERSIONNO) {
+ 		file_error(ms, 0, "File %s supports only version %d magic "
+-		    "files. `%s' is version %d", VERSION,
++		    "files. `%s' is version %d", FILE_VERSION_MAJOR,
+ 		    VERSIONNO, dbname, version);
+ 		return -1;
+ 	}
+@@ -2983,7 +3009,6 @@
+ {
+ 	static const size_t nm = sizeof(*map->nmagic) * MAGIC_SETS;
+ 	static const size_t m = sizeof(**map->magic);
+-	int fd = -1;
+ 	size_t len;
+ 	char *dbname;
+ 	int rv = -1;
+@@ -2992,14 +3017,18 @@
+ 		struct magic m;
+ 		uint32_t h[2 + MAGIC_SETS];
+ 	} hdr;
++	php_stream *stream;
+ 
+-	dbname = mkdbname(ms, fn, 1);
+ 
+-	if (dbname == NULL) 
++	dbname = mkdbname(ms, fn, 0);
++
++	if (dbname == NULL)
+ 		goto out;
+ 
+-	if ((fd = open(dbname, O_WRONLY|O_CREAT|O_TRUNC|O_BINARY, 0644)) == -1) 
+-	{
++	/* wb+ == O_WRONLY|O_CREAT|O_TRUNC|O_BINARY */
++	stream = php_stream_open_wrapper((char *)fn, "wb+", REPORT_ERRORS, NULL);
++
++	if (!stream) {
+ 		file_error(ms, errno, "cannot open `%s'", dbname);
+ 		goto out;
+ 	}
+@@ -3008,24 +3037,25 @@
+ 	hdr.h[1] = VERSIONNO;
+ 	memcpy(hdr.h + 2, map->nmagic, nm);
+ 
+-	if (write(fd, &hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) {
++	if (php_stream_write(stream,(const char *)&hdr, sizeof(hdr)) != (ssize_t)sizeof(hdr)) {
+ 		file_error(ms, errno, "error writing `%s'", dbname);
+ 		goto out;
+ 	}
+ 
+ 	for (i = 0; i < MAGIC_SETS; i++) {
+ 		len = m * map->nmagic[i];
+-		if (write(fd, map->magic[i], len) != (ssize_t)len) {
++		if (php_stream_write(stream, (const char *)map->magic[i], len) != (ssize_t)len) {
+ 			file_error(ms, errno, "error writing `%s'", dbname);
+ 			goto out;
+ 		}
+ 	}
+ 
+-	if (fd != -1)
+-		(void)close(fd);
++	if (stream) {
++		php_stream_close(stream);
++	}
+ 	rv = 0;
+ out:
+-	free(dbname);
++	efree(dbname);
+ 	return rv;
+ }
+ 
+@@ -3059,16 +3089,18 @@
+ 	q++;
+ 	/* Compatibility with old code that looked in .mime */
+ 	if (ms->flags & MAGIC_MIME) {
+-		if (asprintf(&buf, "%.*s.mime%s", (int)(q - fn), fn, ext) < 0)
+-			return NULL;
+-		if (access(buf, R_OK) != -1) {
++		spprintf(&buf, MAXPATHLEN, "%.*s.mime%s", (int)(q - fn), fn, ext);
++#ifdef PHP_WIN32
++		if (VCWD_ACCESS(buf, R_OK) == 0) {
++#else
++		if (VCWD_ACCESS(buf, R_OK) != -1) {
++#endif
+ 			ms->flags &= MAGIC_MIME_TYPE;
+ 			return buf;
+ 		}
+-		free(buf);
++		efree(buf);
+ 	}
+-	if (asprintf(&buf, "%.*s%s", (int)(q - fn), fn, ext) < 0)
+-		return NULL;
++	spprintf(&buf, MAXPATHLEN, "%.*s%s", (int)(q - fn), fn, ext);
+ 
+ 	/* Compatibility with old code that looked in .mime */
+ 	if (strstr(p, ".mime") != NULL)
+@@ -3158,7 +3190,7 @@
+ 	m->offset = swap4((uint32_t)m->offset);
+ 	m->in_offset = swap4((uint32_t)m->in_offset);
+ 	m->lineno = swap4((uint32_t)m->lineno);
+-	if (IS_STRING(m->type)) {
++	if (IS_LIBMAGIC_STRING(m->type)) {
+ 		m->str_range = swap4(m->str_range);
+ 		m->str_flags = swap4(m->str_flags);
+ 	}
+diff -u libmagic.orig/ascmagic.c libmagic/ascmagic.c
+--- libmagic.orig/ascmagic.c	2017-04-10 11:41:09.737268025 +0800
++++ libmagic/ascmagic.c	2017-04-10 11:41:14.411268021 +0800
+@@ -139,7 +139,7 @@
+ 		/* malloc size is a conservative overestimate; could be
+ 		   improved, or at least realloced after conversion. */
+ 		mlen = ulen * 6;
+-		if ((utf8_buf = CAST(unsigned char *, malloc(mlen))) == NULL) {
++		if ((utf8_buf = CAST(unsigned char *, emalloc(mlen))) == NULL) {
+ 			file_oomem(ms, mlen);
+ 			goto done;
+ 		}
+@@ -298,7 +298,8 @@
+ 	}
+ 	rv = 1;
+ done:
+-	free(utf8_buf);
++	if (utf8_buf)
++		efree(utf8_buf);
+ 
+ 	return rv;
+ }
+diff -u libmagic.orig/cdf.c libmagic/cdf.c
+--- libmagic.orig/cdf.c	2017-04-10 11:41:09.731268025 +0800
++++ libmagic/cdf.c	2017-04-10 11:41:14.411268021 +0800
+@@ -35,7 +35,7 @@
+ #include "file.h"
+ 
+ #ifndef lint
+-FILE_RCSID("@(#)$File: cdf.c,v 1.75 2015/02/27 21:16:55 christos Exp $")
++FILE_RCSID("@(#)$File: cdf.c,v 1.73 2015/01/11 16:58:25 christos Exp $")
+ #endif
+ 
+ #include <assert.h>
+@@ -43,7 +43,17 @@
+ #include <err.h>
+ #endif
+ #include <stdlib.h>
++
++#ifdef PHP_WIN32
++#include "win32/unistd.h"
++#else
+ #include <unistd.h>
++#endif
++
++#ifndef UINT32_MAX
++# define UINT32_MAX (0xffffffff)
++#endif
++
+ #include <string.h>
+ #include <time.h>
+ #include <ctype.h>
+@@ -286,11 +296,11 @@
+ }
+ 
+ static ssize_t
+-cdf_read(const cdf_info_t *info, off_t off, void *buf, size_t len)
++cdf_read(const cdf_info_t *info, zend_off_t off, void *buf, size_t len)
+ {
+ 	size_t siz = (size_t)off + len;
+ 
+-	if ((off_t)(off + len) != (off_t)siz) {
++	if ((zend_off_t)(off + len) != (zend_off_t)siz) {
+ 		errno = EINVAL;
+ 		return -1;
+ 	}
+@@ -303,7 +313,10 @@
+ 	if (info->i_fd == -1)
+ 		return -1;
+ 
+-	if (pread(info->i_fd, buf, len, off) != (ssize_t)len)
++	if (FINFO_LSEEK_FUNC(info->i_fd, off, SEEK_SET) == (zend_off_t)-1)
++		return -1;
++
++	if (FINFO_READ_FUNC(info->i_fd, buf, len) != (ssize_t)len)
+ 		return -1;
+ 
+ 	return (ssize_t)len;
+@@ -315,7 +328,7 @@
+ 	char buf[512];
+ 
+ 	(void)memcpy(cdf_bo.s, "\01\02\03\04", 4);
+-	if (cdf_read(info, (off_t)0, buf, sizeof(buf)) == -1)
++	if (cdf_read(info, (zend_off_t)0, buf, sizeof(buf)) == -1)
+ 		return -1;
+ 	cdf_unpack_header(h, buf);
+ 	cdf_swap_header(h);
+@@ -349,7 +362,7 @@
+ 	size_t ss = CDF_SEC_SIZE(h);
+ 	size_t pos = CDF_SEC_POS(h, id);
+ 	assert(ss == len);
+-	return cdf_read(info, (off_t)pos, ((char *)buf) + offs, len);
++	return cdf_read(info, (zend_off_t)pos, ((char *)buf) + offs, len);
+ }
+ 
+ ssize_t
+@@ -1026,33 +1039,31 @@
+ 	    CDF_SHORT_SEC_SIZE(h) : CDF_SEC_SIZE(h);
+ 	const char *b = CAST(const char *, sst->sst_tab);
+ 	const char *eb = b + ss * sst->sst_len;
+-	size_t nr, i, j, k;
++	size_t nr, i, k;
+ 	cdf_catalog_entry_t *ce;
+ 	uint16_t reclen;
+ 	const uint16_t *np;
+ 
+-	for (nr = 0;; nr++) {
++	for (nr = 0; b < eb; nr++) {
+ 		memcpy(&reclen, b, sizeof(reclen));
+ 		reclen = CDF_TOLE2(reclen);
+ 		if (reclen == 0)
+ 			break;
+ 		b += reclen;
+-		if (b > eb)
+-		    break;
+ 	}
+-	nr--;
+ 	*cat = CAST(cdf_catalog_t *,
+ 	    malloc(sizeof(cdf_catalog_t) + nr * sizeof(*ce)));
++	(*cat)->cat_num = nr;
+ 	ce = (*cat)->cat_e;
+ 	memset(ce, 0, nr * sizeof(*ce));
+ 	b = CAST(const char *, sst->sst_tab);
+-	for (j = i = 0; i < nr; b += reclen) {
+-		cdf_catalog_entry_t *cep = &ce[j];
++	for (i = 0; i < nr; i++, b += reclen) {
++		cdf_catalog_entry_t *cep = &ce[i];
+ 		uint16_t rlen;
+ 
+ 		extract_catalog_field(uint16_t, ce_namlen, 0);
+-		extract_catalog_field(uint16_t, ce_num, 4);
+-		extract_catalog_field(uint64_t, ce_timestamp, 8);
++		extract_catalog_field(uint16_t, ce_num, 2);
++		extract_catalog_field(uint64_t, ce_timestamp, 6);
+ 		reclen = cep->ce_namlen;
+ 
+ 		if (reclen < 14) {
+@@ -1074,10 +1085,7 @@
+ 		for (k = 0; k < cep->ce_namlen; k++)
+ 			cep->ce_name[k] = np[k]; /* XXX: CDF_TOLE2? */
+ 		cep->ce_name[cep->ce_namlen] = 0;
+-		j = i;
+-		i++;
+ 	}
+-	(*cat)->cat_num = j;
+ 	return 0;
+ }
+ 
+@@ -1259,7 +1267,7 @@
+ 	cdf_directory_t *d;
+ 	char name[__arraycount(d->d_name)];
+ 	cdf_stream_t scn;
+-	struct timespec ts;
++	struct timeval ts;
+ 
+ 	static const char *types[] = { "empty", "user storage",
+ 	    "user stream", "lockbytes", "property", "root storage" };
+@@ -1314,7 +1322,7 @@
+ cdf_dump_property_info(const cdf_property_info_t *info, size_t count)
+ {
+ 	cdf_timestamp_t tp;
+-	struct timespec ts;
++	struct timeval ts;
+ 	char buf[64];
+ 	size_t i, j;
+ 
+@@ -1436,10 +1444,7 @@
+ 	cdf_dir_t dir;
+ 	cdf_info_t info;
+ 	const cdf_directory_t *root;
+-#ifdef __linux__
+-#define getprogname() __progname
+-	extern char *__progname;
+-#endif
++
+ 	if (argc < 2) {
+ 		(void)fprintf(stderr, "Usage: %s <filename>\n", getprogname());
+ 		return -1;
+@@ -1491,8 +1496,8 @@
+ 		else
+ 			cdf_dump_summary_info(&h, &scn);
+ #endif
+-		if (cdf_read_user_stream(&info, &h, &sat, &ssat, &sst,
+-		    &dir, "Catalog", &scn) == -1)
++		if (cdf_read_catalog(&info, &h, &sat, &ssat, &sst, &dir,
++		    &scn) == -1)
+ 			warn("Cannot read catalog");
+ #ifdef CDF_DEBUG
+ 		else
+diff -u libmagic.orig/cdf.h libmagic/cdf.h
+--- libmagic.orig/cdf.h	2017-04-10 11:41:09.737268025 +0800
++++ libmagic/cdf.h	2017-04-10 11:41:14.412268021 +0800
+@@ -35,10 +35,12 @@
+ #ifndef _H_CDF_
+ #define _H_CDF_
+ 
+-#ifdef WIN32
++#ifdef PHP_WIN32
+ #include <winsock2.h>
+ #define timespec timeval
+ #define tv_nsec tv_usec
++#define asctime_r php_asctime_r
++#define ctime_r php_ctime_r
+ #endif
+ #ifdef __DJGPP__
+ #define timespec timeval
+@@ -280,9 +282,9 @@
+ 	cdf_catalog_entry_t cat_e[0];
+ } cdf_catalog_t;
+ 
+-struct timespec;
+-int cdf_timestamp_to_timespec(struct timespec *, cdf_timestamp_t);
+-int cdf_timespec_to_timestamp(cdf_timestamp_t *, const struct timespec *);
++struct timeval;
++int cdf_timestamp_to_timespec(struct timeval *, cdf_timestamp_t);
++int cdf_timespec_to_timestamp(cdf_timestamp_t *, const struct timeval *);
+ int cdf_read_header(const cdf_info_t *, cdf_header_t *);
+ void cdf_swap_header(cdf_header_t *);
+ void cdf_unpack_header(cdf_header_t *, char *);
+diff -u libmagic.orig/cdf_time.c libmagic/cdf_time.c
+--- libmagic.orig/cdf_time.c	2017-04-10 11:41:09.737268025 +0800
++++ libmagic/cdf_time.c	2017-04-10 11:41:14.412268021 +0800
+@@ -96,7 +96,7 @@
+ }
+ 
+ int
+-cdf_timestamp_to_timespec(struct timespec *ts, cdf_timestamp_t t)
++cdf_timestamp_to_timespec(struct timeval *ts, cdf_timestamp_t t)
+ {
+ 	struct tm tm;
+ #ifdef HAVE_STRUCT_TM_TM_ZONE
+@@ -104,8 +104,9 @@
+ #endif
+ 	int rdays;
+ 
+-	/* Unit is 100's of nanoseconds */
+-	ts->tv_nsec = (t % CDF_TIME_PREC) * 100;
++	/* XXX 5.14 at least introdced 100 ns intervals, this is to do */
++	/* Time interval, in microseconds */
++	ts->tv_usec = (t % CDF_TIME_PREC) * CDF_TIME_PREC;
+ 
+ 	t /= CDF_TIME_PREC;
+ 	tm.tm_sec = (int)(t % 60);
+@@ -144,7 +145,7 @@
+ 
+ int
+ /*ARGSUSED*/
+-cdf_timespec_to_timestamp(cdf_timestamp_t *t, const struct timespec *ts)
++cdf_timespec_to_timestamp(cdf_timestamp_t *t, const struct timeval *ts)
+ {
+ #ifndef __lint__
+ 	(void)&t;
+@@ -156,7 +157,7 @@
+ 		errno = EINVAL;
+ 		return -1;
+ 	}
+-	*t = (ts->ts_nsec / 100) * CDF_TIME_PREC;
++	*t = (ts->ts_usec / CDF_TIME_PREC) * CDF_TIME_PREC;
+ 	*t = tm.tm_sec;
+ 	*t += tm.tm_min * 60;
+ 	*t += tm.tm_hour * 60 * 60;
+@@ -181,7 +182,7 @@
+ int
+ main(int argc, char *argv[])
+ {
+-	struct timespec ts;
++	struct timeval ts;
+ 	char buf[25];
+ 	static const cdf_timestamp_t tst = 0x01A5E403C2D59C00ULL;
+ 	static const char *ref = "Sat Apr 23 01:30:00 1977";
+diff -u libmagic.orig/compress.c libmagic/compress.c
+--- libmagic.orig/compress.c	2017-04-10 11:41:09.732268025 +0800
++++ libmagic/compress.c	2017-04-10 11:41:14.412268021 +0800
+@@ -32,10 +32,11 @@
+  *	uncompress(method, old, n, newch) - uncompress old into new, 
+  *					    using method, return sizeof new
+  */
++#include "config.h"
+ #include "file.h"
+ 
+ #ifndef lint
+-FILE_RCSID("@(#)$File: compress.c,v 1.78 2015/01/02 21:29:39 christos Exp $")
++FILE_RCSID("@(#)$File: compress.c,v 1.77 2014/12/12 16:33:01 christos Exp $")
+ #endif
+ 
+ #include "magic.h"
+@@ -51,7 +52,7 @@
+ typedef void (*sig_t)(int);
+ # endif /* HAVE_SIG_T */
+ #endif 
+-#if !defined(__MINGW32__) && !defined(WIN32)
++#ifndef PHP_WIN32
+ #include <sys/ioctl.h>
+ #endif
+ #ifdef HAVE_SYS_WAIT_H
+@@ -65,6 +66,9 @@
+ #include <zlib.h>
+ #endif
+ 
++#undef FIONREAD
++
++
+ private const struct {
+ 	const char magic[8];
+ 	size_t maglen;
+@@ -92,8 +96,7 @@
+ #define NODATA ((size_t)~0)
+ 
+ private ssize_t swrite(int, const void *, size_t);
+-#if HAVE_FORK
+-private size_t ncompr = sizeof(compr) / sizeof(compr[0]);
++#ifdef PHP_FILEINFO_UNCOMPRESS
+ private size_t uncompressbuf(struct magic_set *, int, size_t,
+     const unsigned char *, unsigned char **, size_t);
+ #ifdef BUILTIN_DECOMPRESS
+@@ -148,7 +151,8 @@
+ #ifdef HAVE_SIGNAL_H
+ 	(void)signal(SIGPIPE, osigpipe);
+ #endif
+-	free(newbuf);
++	if (newbuf)
++		efree(newbuf);
+ 	ms->flags |= MAGIC_COMPRESS;
+ 	return rv;
+ }
+@@ -182,7 +186,7 @@
+  * `safe' read for sockets and pipes.
+  */
+ protected ssize_t
+-sread(int fd, void *buf, size_t n, int canbepipe __attribute__((__unused__)))
++sread(int fd, void *buf, size_t n, int canbepipe)
+ {
+ 	ssize_t rv;
+ #ifdef FIONREAD
+@@ -230,7 +234,7 @@
+ 
+ nocheck:
+ 	do
+-		switch ((rv = read(fd, buf, n))) {
++		switch ((rv = FINFO_READ_FUNC(fd, buf, n))) {
+ 		case -1:
+ 			if (errno == EINTR)
+ 				continue;
+@@ -307,13 +311,14 @@
+ 		return -1;
+ 	}
+ 	(void)close(tfd);
+-	if (lseek(fd, (off_t)0, SEEK_SET) == (off_t)-1) {
++	if (FINFO_LSEEK_FUNC(fd, (zend_off_t)0, SEEK_SET) == (zend_off_t)-1) {
+ 		file_badseek(ms);
+ 		return -1;
+ 	}
+ 	return fd;
+ }
+-#if HAVE_FORK
++
++#ifdef PHP_FILEINFO_UNCOMPRESS
+ #ifdef BUILTIN_DECOMPRESS
+ 
+ #define FHCRC		(1 << 1)
+@@ -350,7 +355,7 @@
+ 
+ 	if (data_start >= n)
+ 		return 0;
+-	if ((*newch = CAST(unsigned char *, malloc(HOWMANY + 1))) == NULL) {
++	if ((*newch = CAST(unsigned char *, emalloc(HOWMANY + 1))) == NULL) {
+ 		return 0;
+ 	}
+ 	
+@@ -411,19 +416,16 @@
+ 	case 0:	/* child */
+ 		(void) close(0);
+ 		if (fd != -1) {
+-		    if (dup(fd) == -1)
+-			_exit(1);
+-		    (void) lseek(0, (off_t)0, SEEK_SET);
++		    (void) dup(fd);
++		    (void) FINFO_LSEEK_FUNC(0, (zend_off_t)0, SEEK_SET);
+ 		} else {
+-		    if (dup(fdin[0]) == -1)
+-			_exit(1);
++		    (void) dup(fdin[0]);
+ 		    (void) close(fdin[0]);
+ 		    (void) close(fdin[1]);
+ 		}
+ 
+ 		(void) close(1);
+-		if (dup(fdout[1]) == -1)
+-			_exit(1);
++		(void) dup(fdout[1]);
+ 		(void) close(fdout[0]);
+ 		(void) close(fdout[1]);
+ #ifndef DEBUG
+@@ -474,37 +476,21 @@
+ 				/*NOTREACHED*/
+ 
+ 			default:  /* parent */
+-				if (wait(&status) == -1) {
+-#ifdef DEBUG
+-					(void)fprintf(stderr,
+-					    "Wait failed (%s)\n",
+-					    strerror(errno));
+-#endif
+-					exit(1);
+-				}
+-				exit(WIFEXITED(status) ?
+-				    WEXITSTATUS(status) : 1);
+-				/*NOTREACHED*/
++				break;
+ 			}
+ 			(void) close(fdin[1]);
+ 			fdin[1] = -1;
+ 		}
+ 
+-		if ((*newch = (unsigned char *) malloc(HOWMANY + 1)) == NULL) {
+-#ifdef DEBUG
+-			(void)fprintf(stderr, "Malloc failed (%s)\n",
+-			    strerror(errno));
+-#endif
+-			n = NODATA;
+-			goto err;
+-		}
++		*newch = (unsigned char *) emalloc(HOWMANY + 1);
++
+ 		if ((r = sread(fdout[0], *newch, HOWMANY, 0)) <= 0) {
+ #ifdef DEBUG
+ 			(void)fprintf(stderr, "Read failed (%s)\n",
+ 			    strerror(errno));
+ #endif
+-			free(*newch);
+-			n = NODATA;
++			efree(*newch);
++			n = NODATA-;
+ 			*newch = NULL;
+ 			goto err;
+ 		} else {
+@@ -516,27 +502,16 @@
+ 		if (fdin[1] != -1)
+ 			(void) close(fdin[1]);
+ 		(void) close(fdout[0]);
+-		if (wait(&status) == -1) {
+-#ifdef DEBUG
+-			(void)fprintf(stderr, "Wait failed (%s)\n",
+-			    strerror(errno));
+-#endif
+-			n = NODATA;
+-		} else if (!WIFEXITED(status)) {
+-#ifdef DEBUG
+-			(void)fprintf(stderr, "Child not exited (0x%x)\n",
+-			    status);
+-#endif
+-		} else if (WEXITSTATUS(status) != 0) {
+-#ifdef DEBUG
+-			(void)fprintf(stderr, "Child exited (0x%d)\n",
+-			    WEXITSTATUS(status));
++#ifdef WNOHANG
++		while (waitpid(pid, NULL, WNOHANG) != -1)
++			continue;
++#else
++		(void)wait(NULL);
+ #endif
+-		}
+ 
+ 		(void) close(fdin[0]);
+ 	    
+ 		return n;
+ 	}
+ }
+-#endif
++#endif /* if PHP_FILEINFO_UNCOMPRESS */
+diff -u libmagic.orig/elfclass.h libmagic/elfclass.h
+--- libmagic.orig/elfclass.h	2017-04-10 11:41:09.731268025 +0800
++++ libmagic/elfclass.h	2017-04-10 11:41:14.412268021 +0800
+@@ -41,7 +41,7 @@
+ 			return toomany(ms, "program headers", phnum);
+ 		flags |= FLAGS_IS_CORE;
+ 		if (dophn_core(ms, clazz, swap, fd,
+-		    (off_t)elf_getu(swap, elfhdr.e_phoff), phnum,
++		    (zend_off_t)elf_getu(swap, elfhdr.e_phoff), phnum,
+ 		    (size_t)elf_getu16(swap, elfhdr.e_phentsize),
+ 		    fsize, &flags, &notecount) == -1)
+ 			return -1;
+@@ -56,7 +56,7 @@
+ 		if (shnum > ms->elf_shnum_max)
+ 			return toomany(ms, "section", shnum);
+ 		if (dophn_exec(ms, clazz, swap, fd,
+-		    (off_t)elf_getu(swap, elfhdr.e_phoff), phnum,
++		    (zend_off_t)elf_getu(swap, elfhdr.e_phoff), phnum,
+ 		    (size_t)elf_getu16(swap, elfhdr.e_phentsize),
+ 		    fsize, shnum, &flags, &notecount) == -1)
+ 			return -1;
+@@ -66,7 +66,7 @@
+ 		if (shnum > ms->elf_shnum_max)
+ 			return toomany(ms, "section headers", shnum);
+ 		if (doshn(ms, clazz, swap, fd,
+-		    (off_t)elf_getu(swap, elfhdr.e_shoff), shnum,
++		    (zend_off_t)elf_getu(swap, elfhdr.e_shoff), shnum,
+ 		    (size_t)elf_getu16(swap, elfhdr.e_shentsize),
+ 		    fsize, elf_getu16(swap, elfhdr.e_machine),
+ 		    (int)elf_getu16(swap, elfhdr.e_shstrndx),
+diff -u libmagic.orig/file.h libmagic/file.h
+--- libmagic.orig/file.h	2017-04-10 11:41:09.731268025 +0800
++++ libmagic/file.h	2017-04-10 11:41:14.412268021 +0800
+@@ -33,11 +33,9 @@
+ #ifndef __file_h__
+ #define __file_h__
+ 
+-#ifdef HAVE_CONFIG_H
+-#include <config.h>
+-#endif
++#include "config.h"
+ 
+-#ifdef WIN32
++#ifdef PHP_WIN32
+   #ifdef _WIN64
+     #define SIZE_T_FORMAT "I64"
+   #else
+@@ -61,10 +59,18 @@
+ #ifdef HAVE_INTTYPES_H
+ #include <inttypes.h>
+ #endif
+-#include <regex.h>
+-#include <time.h>
++#ifdef PHP_WIN32
++#include "win32/php_stdint.h"
++#endif
++
++#include "php.h"
++#include "ext/standard/php_string.h"
++#include "ext/pcre/php_pcre.h"
++
+ #include <sys/types.h>
+-#ifndef WIN32
++#ifdef PHP_WIN32
++#include "win32/param.h"
++#else
+ #include <sys/param.h>
+ #endif
+ /* Do this here and now, because struct stat gets re-defined on solaris */
+@@ -77,7 +83,7 @@
+ #define MAGIC "/etc/magic"
+ #endif
+ 
+-#if defined(__EMX__) || defined (WIN32)
++#if defined(__EMX__) || defined(PHP_WIN32)
+ #define PATHSEP	';'
+ #else
+ #define PATHSEP	':'
+@@ -111,12 +117,6 @@
+ #endif
+ #endif
+ 
+-#ifndef __GNUC__
+-#ifndef __attribute__
+-#define __attribute__(a)
+-#endif
+-#endif
+-
+ #ifndef MIN
+ #define	MIN(a,b)	(((a) < (b)) ? (a) : (b))
+ #endif
+@@ -227,7 +227,7 @@
+ #define				FILE_CLEAR	47
+ #define				FILE_NAMES_SIZE	48 /* size of array to contain all names */
+ 
+-#define IS_STRING(t) \
++#define IS_LIBMAGIC_STRING(t) \
+ 	((t) == FILE_STRING || \
+ 	 (t) == FILE_PSTRING || \
+ 	 (t) == FILE_BESTRING16 || \
+@@ -421,28 +421,22 @@
+ /* Type for Unicode characters */
+ typedef unsigned long unichar;
+ 
+-struct stat;
+ #define FILE_T_LOCAL	1
+ #define FILE_T_WINDOWS	2
+ protected const char *file_fmttime(uint64_t, int, char *);
+ protected struct magic_set *file_ms_alloc(int);
+ protected void file_ms_free(struct magic_set *);
+-protected int file_buffer(struct magic_set *, int, const char *, const void *,
++protected int file_buffer(struct magic_set *, php_stream *, const char *, const void *,
+     size_t);
+-protected int file_fsmagic(struct magic_set *, const char *, struct stat *);
++protected int file_fsmagic(struct magic_set *, const char *, zend_stat_t *, php_stream *);
+ protected int file_pipe2file(struct magic_set *, int, const void *, size_t);
+-protected int file_vprintf(struct magic_set *, const char *, va_list)
+-    __attribute__((__format__(__printf__, 2, 0)));
+ protected size_t file_printedlen(const struct magic_set *);
+ protected int file_replace(struct magic_set *, const char *, const char *);
+-protected int file_printf(struct magic_set *, const char *, ...)
+-    __attribute__((__format__(__printf__, 2, 3)));
++protected int file_printf(struct magic_set *, const char *, ...);
+ protected int file_reset(struct magic_set *);
+-protected int file_tryelf(struct magic_set *, int, const unsigned char *,
+-    size_t);
+ protected int file_trycdf(struct magic_set *, int, const unsigned char *,
+     size_t);
+-#if HAVE_FORK
++#ifdef PHP_FILEINFO_UNCOMPRESS
+ protected int file_zmagic(struct magic_set *, int, const char *,
+     const unsigned char *, size_t);
+ #endif
+@@ -462,16 +456,13 @@
+ protected int file_magicfind(struct magic_set *, const char *, struct mlist *);
+ protected uint64_t file_signextend(struct magic_set *, struct magic *,
+     uint64_t);
++protected void file_delmagic(struct magic *, int type, size_t entries);
+ protected void file_badread(struct magic_set *);
+ protected void file_badseek(struct magic_set *);
+ protected void file_oomem(struct magic_set *, size_t);
+-protected void file_error(struct magic_set *, int, const char *, ...)
+-    __attribute__((__format__(__printf__, 3, 4)));
+-protected void file_magerror(struct magic_set *, const char *, ...)
+-    __attribute__((__format__(__printf__, 2, 3)));
+-protected void file_magwarn(struct magic_set *, const char *, ...)
+-    __attribute__((__format__(__printf__, 2, 3)));
+-protected void file_mdump(struct magic *);
++protected void file_error(struct magic_set *, int, const char *, ...);
++protected void file_magerror(struct magic_set *, const char *, ...);
++protected void file_magwarn(struct magic_set *, const char *, ...);
+ protected void file_showstr(FILE *, const char *, size_t);
+ protected size_t file_mbswidth(const char *);
+ protected const char *file_getbuffer(struct magic_set *);
+@@ -487,30 +478,6 @@
+     size_t);
+ #endif /* __EMX__ */
+ 
+-#if defined(HAVE_LOCALE_H)
+-#include <locale.h>
+-#endif
+-#if defined(HAVE_XLOCALE_H)
+-#include <xlocale.h>
+-#endif
+-
+-typedef struct {
+-	const char *pat;
+-#if defined(HAVE_NEWLOCALE) && defined(HAVE_USELOCALE) && defined(HAVE_FREELOCALE)
+-#define USE_C_LOCALE
+-	locale_t old_lc_ctype;
+-	locale_t c_lc_ctype;
+-#endif
+-	int rc;
+-	regex_t rx;
+-} file_regex_t;
+-
+-protected int file_regcomp(file_regex_t *, const char *, int);
+-protected int file_regexec(file_regex_t *, const char *, size_t, regmatch_t *,
+-    int);
+-protected void file_regfree(file_regex_t *);
+-protected void file_regerror(file_regex_t *, int, struct magic_set *);
+-
+ typedef struct {
+ 	char *buf;
+ 	uint32_t offset;
+@@ -519,10 +486,8 @@
+ protected file_pushbuf_t *file_push_buffer(struct magic_set *);
+ protected char  *file_pop_buffer(struct magic_set *, file_pushbuf_t *);
+ 
+-#ifndef COMPILE_ONLY
+ extern const char *file_names[];
+ extern const size_t file_nnames;
+-#endif
+ 
+ #ifndef HAVE_STRERROR
+ extern int sys_nerr;
+@@ -535,20 +500,10 @@
+ #define strtoul(a, b, c)	strtol(a, b, c)
+ #endif
+ 
+-#ifndef HAVE_PREAD
+-ssize_t pread(int, void *, size_t, off_t);
+-#endif
+-#ifndef HAVE_VASPRINTF
+-int vasprintf(char **, const char *, va_list);
+-#endif
+-#ifndef HAVE_ASPRINTF
+-int asprintf(char **, const char *, ...);
+-#endif
+-
+-#ifndef HAVE_STRLCPY
++#ifndef strlcpy
+ size_t strlcpy(char *, const char *, size_t);
+ #endif
+-#ifndef HAVE_STRLCAT
++#ifndef strlcat
+ size_t strlcat(char *, const char *, size_t);
+ #endif
+ #ifndef HAVE_STRCASESTR
+@@ -564,16 +519,6 @@
+ #ifndef HAVE_ASCTIME_R
+ char   *asctime_r(const struct tm *, char *);
+ #endif
+-#ifndef HAVE_GMTIME_R
+-struct tm *gmtime_r(const time_t *, struct tm *);
+-#endif
+-#ifndef HAVE_LOCALTIME_R
+-struct tm *localtime_r(const time_t *, struct tm *);
+-#endif
+-#ifndef HAVE_FMTCHECK
+-const char *fmtcheck(const char *, const char *) 
+-     __attribute__((__format_arg__(2)));
+-#endif
+ 
+ #if defined(HAVE_MMAP) && defined(HAVE_SYS_MMAN_H) && !defined(QUICK)
+ #define QUICK
+@@ -596,6 +541,14 @@
+ #else
+ #define FILE_RCSID(id)
+ #endif
++
++#ifdef PHP_WIN32
++#define FINFO_LSEEK_FUNC _lseek
++#define FINFO_READ_FUNC _read
++#else
++#define FINFO_LSEEK_FUNC lseek
++#define FINFO_READ_FUNC read
++#endif
+ #ifndef __RCSID
+ #define __RCSID(a)
+ #endif
+diff -u libmagic.orig/fsmagic.c libmagic/fsmagic.c
+--- libmagic.orig/fsmagic.c	2017-04-10 11:41:09.730268025 +0800
++++ libmagic/fsmagic.c	2017-04-10 11:41:14.413268021 +0800
+@@ -63,27 +63,21 @@
+ # define minor(dev)  ((dev) & 0xff)
+ #endif
+ #undef HAVE_MAJOR
+-#ifdef	S_IFLNK
+-private int
+-bad_link(struct magic_set *ms, int err, char *buf)
+-{
+-	int mime = ms->flags & MAGIC_MIME;
+-	if ((mime & MAGIC_MIME_TYPE) &&
+-	    file_printf(ms, "inode/symlink")
+-	    == -1)
+-		return -1;
+-	else if (!mime) {
+-		if (ms->flags & MAGIC_ERROR) {
+-			file_error(ms, err,
+-				   "broken symbolic link to %s", buf);
+-			return -1;
+-		} 
+-		if (file_printf(ms, "broken symbolic link to %s", buf) == -1)
+-			return -1;
+-	}
+-	return 1;
+-}
++
++#ifdef PHP_WIN32
++
++# undef S_IFIFO
+ #endif
++
++
++#ifndef S_ISDIR
++#define S_ISDIR(mode) ((mode) & _S_IFDIR)
++#endif
++
++#ifndef S_ISREG
++#define S_ISREG(mode) ((mode) & _S_IFREG)
++#endif
++
+ private int
+ handle_mime(struct magic_set *ms, int mime, const char *str)
+ {
+@@ -100,72 +94,39 @@
+ }
+ 
+ protected int
+-file_fsmagic(struct magic_set *ms, const char *fn, struct stat *sb)
++file_fsmagic(struct magic_set *ms, const char *fn, zend_stat_t *sb, php_stream *stream)
+ {
+ 	int ret, did = 0;
+ 	int mime = ms->flags & MAGIC_MIME;
+-#ifdef	S_IFLNK
+-	char buf[BUFSIZ+4];
+-	ssize_t nch;
+-	struct stat tstatbuf;
+-#endif
+ 
+ 	if (ms->flags & MAGIC_APPLE)
+ 		return 0;
+-	if (fn == NULL)
++
++	if (fn == NULL && !stream) {
+ 		return 0;
++	}
+ 
+ #define COMMA	(did++ ? ", " : "")
+-	/*
+-	 * Fstat is cheaper but fails for files you don't have read perms on.
+-	 * On 4.2BSD and similar systems, use lstat() to identify symlinks.
+-	 */
+-#ifdef	S_IFLNK
+-	if ((ms->flags & MAGIC_SYMLINK) == 0)
+-		ret = lstat(fn, sb);
+-	else
+-#endif
+-	ret = stat(fn, sb);	/* don't merge into if; see "ret =" above */
+-
+-#ifdef WIN32
+-	{
+-		HANDLE hFile = CreateFile((LPCSTR)fn, 0, FILE_SHARE_DELETE |
+-		    FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0,
+-		    NULL);
+-		if (hFile != INVALID_HANDLE_VALUE) {
+-			/*
+-			 * Stat failed, but we can still open it - assume it's
+-			 * a block device, if nothing else.
+-			 */
+-			if (ret) {
+-				sb->st_mode = S_IFBLK;
+-				ret = 0;
++
++	if (stream) {
++		php_stream_statbuf ssb;
++		if (php_stream_stat(stream, &ssb) < 0) {
++			if (ms->flags & MAGIC_ERROR) {
++				file_error(ms, errno, "cannot stat `%s'", fn);
++				return -1;
+ 			}
+-			switch (GetFileType(hFile)) {
+-			case FILE_TYPE_CHAR:
+-				sb->st_mode |= S_IFCHR;
+-				sb->st_mode &= ~S_IFREG;
+-				break;
+-			case FILE_TYPE_PIPE:
+-				sb->st_mode |= S_IFIFO;
+-				sb->st_mode &= ~S_IFREG;
+-				break;
++			return 0;
++		}
++		memcpy(sb, &ssb.sb, sizeof(struct stat));
++	} else {
++		if (php_sys_stat(fn, sb) != 0) {
++			if (ms->flags & MAGIC_ERROR) {
++				file_error(ms, errno, "cannot stat `%s'", fn);
++				return -1;
+ 			}
+-			CloseHandle(hFile);
++			return 0;
+ 		}
+ 	}
+-#endif
+-
+-	if (ret) {
+-		if (ms->flags & MAGIC_ERROR) {
+-			file_error(ms, errno, "cannot stat `%s'", fn);
+-			return -1;
+-		}
+-		if (file_printf(ms, "cannot open `%s' (%s)",
+-		    fn, strerror(errno)) == -1)
+-			return -1;
+-		return 0;
+-	}
+ 
+ 	ret = 1;
+ 	if (!mime) {
+@@ -187,30 +148,24 @@
+ 	}
+ 	
+ 	switch (sb->st_mode & S_IFMT) {
+-	case S_IFDIR:
+-		if (mime) {
+-			if (handle_mime(ms, mime, "directory") == -1)
+-				return -1;
+-		} else if (file_printf(ms, "%sdirectory", COMMA) == -1)
+-			return -1;
+-		break;
+-#ifdef S_IFCHR
+-	case S_IFCHR:
+-		/* 
+-		 * If -s has been specified, treat character special files
+-		 * like ordinary files.  Otherwise, just report that they
+-		 * are block special files and go on to the next file.
+-		 */
+-		if ((ms->flags & MAGIC_DEVICES) != 0) {
+-			ret = 0;
+-			break;
+-		}
+-		if (mime) {
+-			if (handle_mime(ms, mime, "chardevice") == -1)
+-				return -1;
+-		} else {
+-#ifdef HAVE_STRUCT_STAT_ST_RDEV
+-# ifdef dv_unit
++#ifndef PHP_WIN32
++# ifdef S_IFCHR
++		case S_IFCHR:
++			/*
++			 * If -s has been specified, treat character special files
++			 * like ordinary files.  Otherwise, just report that they
++			 * are block special files and go on to the next file.
++			 */
++			if ((ms->flags & MAGIC_DEVICES) != 0) {
++				ret = 0;
++				break;
++			}
++			if (mime) {
++				if (handle_mime(ms, mime, "chardevice") == -1)
++					return -1;
++			} else {
++#  ifdef HAVE_STAT_ST_RDEV
++#   ifdef dv_unit
+ 			if (file_printf(ms, "%scharacter special (%d/%d/%d)",
+ 			    COMMA, major(sb->st_rdev), dv_unit(sb->st_rdev),
+ 					dv_subunit(sb->st_rdev)) == -1)
+@@ -225,44 +180,11 @@
+ 			if (file_printf(ms, "%scharacter special", COMMA) == -1)
+ 				return -1;
+ #endif
+-		}
+-		break;
+-#endif
+-#ifdef S_IFBLK
+-	case S_IFBLK:
+-		/* 
+-		 * If -s has been specified, treat block special files
+-		 * like ordinary files.  Otherwise, just report that they
+-		 * are block special files and go on to the next file.
+-		 */
+-		if ((ms->flags & MAGIC_DEVICES) != 0) {
+-			ret = 0;
+-			break;
+-		}
+-		if (mime) {
+-			if (handle_mime(ms, mime, "blockdevice") == -1)
+-				return -1;
+-		} else {
+-#ifdef HAVE_STRUCT_STAT_ST_RDEV
+-# ifdef dv_unit
+-			if (file_printf(ms, "%sblock special (%d/%d/%d)",
+-			    COMMA, major(sb->st_rdev), dv_unit(sb->st_rdev),
+-			    dv_subunit(sb->st_rdev)) == -1)
+-				return -1;
+-# else
+-			if (file_printf(ms, "%sblock special (%ld/%ld)",
+-			    COMMA, (long)major(sb->st_rdev),
+-			    (long)minor(sb->st_rdev)) == -1)
+-				return -1;
++	}
++			return 1;
+ # endif
+-#else
+-			if (file_printf(ms, "%sblock special", COMMA) == -1)
+-				return -1;
+ #endif
+-		}
+-		break;
+-#endif
+-	/* TODO add code to handle V7 MUX and Blit MUX files */
++
+ #ifdef	S_IFIFO
+ 	case S_IFIFO:
+ 		if((ms->flags & MAGIC_DEVICES) != 0)
+@@ -285,79 +207,14 @@
+ #endif
+ #ifdef	S_IFLNK
+ 	case S_IFLNK:
+-		if ((nch = readlink(fn, buf, BUFSIZ-1)) <= 0) {
++		/* stat is used, if it made here then the link is broken */
+ 			if (ms->flags & MAGIC_ERROR) {
+-			    file_error(ms, errno, "unreadable symlink `%s'",
+-				fn);
++			    file_error(ms, errno, "unreadable symlink `%s'", fn);
+ 			    return -1;
+ 			}
+-			if (mime) {
+-				if (handle_mime(ms, mime, "symlink") == -1)
+-					return -1;
+-			} else if (file_printf(ms,
+-			    "%sunreadable symlink `%s' (%s)", COMMA, fn,
+-			    strerror(errno)) == -1)
+-				return -1;
+-			break;
+-		}
+-		buf[nch] = '\0';	/* readlink(2) does not do this */
+-
+-		/* If broken symlink, say so and quit early. */
+-		if (*buf == '/') {
+-			if (stat(buf, &tstatbuf) < 0)
+-				return bad_link(ms, errno, buf);
+-		} else {
+-			char *tmp;
+-			char buf2[BUFSIZ+BUFSIZ+4];
+-
+-			if ((tmp = strrchr(fn,  '/')) == NULL) {
+-				tmp = buf; /* in current directory anyway */
+-			} else {
+-				if (tmp - fn + 1 > BUFSIZ) {
+-					if (ms->flags & MAGIC_ERROR) {
+-						file_error(ms, 0, 
+-						    "path too long: `%s'", buf);
+-						return -1;
+-					}
+-					if (mime) {
+-						if (handle_mime(ms, mime,
+-						    "x-path-too-long") == -1)
+-							return -1;
+-					} else if (file_printf(ms,
+-					    "%spath too long: `%s'", COMMA,
+-					    fn) == -1)
+-						return -1;
+-					break;
+-				}
+-				/* take dir part */
+-				(void)strlcpy(buf2, fn, sizeof buf2);
+-				buf2[tmp - fn + 1] = '\0';
+-				/* plus (rel) link */
+-				(void)strlcat(buf2, buf, sizeof buf2);
+-				tmp = buf2;
+-			}
+-			if (stat(tmp, &tstatbuf) < 0)
+-				return bad_link(ms, errno, buf);
+-		}
+-
+-		/* Otherwise, handle it. */
+-		if ((ms->flags & MAGIC_SYMLINK) != 0) {
+-			const char *p;
+-			ms->flags &= MAGIC_SYMLINK;
+-			p = magic_file(ms, buf);
+-			ms->flags |= MAGIC_SYMLINK;
+-			if (p == NULL)
+-				return -1;
+-		} else { /* just print what it points to */
+-			if (mime) {
+-				if (handle_mime(ms, mime, "symlink") == -1)
+-					return -1;
+-			} else if (file_printf(ms, "%ssymbolic link to %s",
+-			    COMMA, buf) == -1)
+-				return -1;
+-		}
+-		break;
++	return 1;
+ #endif
++
+ #ifdef	S_IFSOCK
+ #ifndef __COHERENT__
+ 	case S_IFSOCK:
+@@ -381,15 +238,15 @@
+ 		 * size for raw disk partitions. (If the block special device
+ 		 * really has zero length, the fact that it is empty will be
+ 		 * detected and reported correctly when we read the file.)
+-		 */
+-		if ((ms->flags & MAGIC_DEVICES) == 0 && sb->st_size == 0) {
+-			if (mime) {
+-				if (handle_mime(ms, mime, "x-empty") == -1)
+-					return -1;
+-			} else if (file_printf(ms, "%sempty", COMMA) == -1)
++	 */
++	if ((ms->flags & MAGIC_DEVICES) == 0 && sb->st_size == 0) {
++		if (mime) {
++			if (handle_mime(ms, mime, "x-empty") == -1)
+ 				return -1;
++			} else if (file_printf(ms, "%sempty", COMMA) == -1)
++			return -1;
+ 			break;
+-		}
++	}
+ 		ret = 0;
+ 		break;
+ 
+@@ -399,9 +256,5 @@
+ 		/*NOTREACHED*/
+ 	}
+ 
+-	if (!mime && did && ret == 0) {
+-	    if (file_printf(ms, " ") == -1)
+-		    return -1;
+-	}
+ 	return ret;
+ }
+diff -u libmagic.orig/funcs.c libmagic/funcs.c
+--- libmagic.orig/funcs.c	2017-04-10 11:41:09.732268025 +0800
++++ libmagic/funcs.c	2017-04-10 11:41:14.413268021 +0800
+@@ -31,7 +31,6 @@
+ #endif	/* lint */
+ 
+ #include "magic.h"
+-#include <assert.h>
+ #include <stdarg.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -42,76 +41,79 @@
+ #if defined(HAVE_WCTYPE_H)
+ #include <wctype.h>
+ #endif
+-#if defined(HAVE_LIMITS_H)
+-#include <limits.h>
++#if defined(HAVE_LOCALE_H)
++#include <locale.h>
+ #endif
+ 
+ #ifndef SIZE_MAX
+ #define SIZE_MAX	((size_t)~0)
+ #endif
+ 
+-/*
+- * Like printf, only we append to a buffer.
+- */
+-protected int
+-file_vprintf(struct magic_set *ms, const char *fmt, va_list ap)
+-{
+-	int len;
+-	char *buf, *newstr;
++#include "php.h"
++#include "main/php_network.h"
+ 
+-	if (ms->event_flags & EVENT_HAD_ERR)
+-		return 0;
+-	len = vasprintf(&buf, fmt, ap);
+-	if (len < 0)
+-		goto out;
++#ifndef PREG_OFFSET_CAPTURE
++# define PREG_OFFSET_CAPTURE                 (1<<8)
++#endif
+ 
+-	if (ms->o.buf != NULL) {
+-		len = asprintf(&newstr, "%s%s", ms->o.buf, buf);
+-		free(buf);
+-		if (len < 0)
+-			goto out;
+-		free(ms->o.buf);
+-		buf = newstr;
+-	}
+-	ms->o.buf = buf;
+-	return 0;
+-out:
+-	file_error(ms, errno, "vasprintf failed");
+-	return -1;
+-}
++extern public void convert_libmagic_pattern(zval *pattern, char *val, int len, int options);
+ 
+ protected int
+ file_printf(struct magic_set *ms, const char *fmt, ...)
+ {
+-	int rv;
+ 	va_list ap;
++	int len;
++	char *buf = NULL, *newstr;
+ 
+ 	va_start(ap, fmt);
+-	rv = file_vprintf(ms, fmt, ap);
++	len = vspprintf(&buf, 0, fmt, ap);
+ 	va_end(ap);
+-	return rv;
++
++	if (ms->o.buf != NULL) {
++		len = spprintf(&newstr, 0, "%s%s", ms->o.buf, (buf ? buf : ""));
++		if (buf) {
++			efree(buf);
++		}
++		efree(ms->o.buf);
++		ms->o.buf = newstr;
++	} else {
++		ms->o.buf = buf;
++	}
++	return 0;
+ }
+ 
+ /*
+  * error - print best error message possible
+  */
+ /*VARARGS*/
+-__attribute__((__format__(__printf__, 3, 0)))
+ private void
+ file_error_core(struct magic_set *ms, int error, const char *f, va_list va,
+     size_t lineno)
+ {
++	char *buf = NULL;
++
+ 	/* Only the first error is ok */
+ 	if (ms->event_flags & EVENT_HAD_ERR)
+ 		return;
+ 	if (lineno != 0) {
+-		free(ms->o.buf);
++		efree(ms->o.buf);
+ 		ms->o.buf = NULL;
+ 		file_printf(ms, "line %" SIZE_T_FORMAT "u: ", lineno);
+ 	}
+-	file_vprintf(ms, f, va);
+-	if (error > 0)
+-		file_printf(ms, " (%s)", strerror(error));
++
++	vspprintf(&buf, 0, f, va);
++	va_end(va);
++
++	if (error > 0) {
++		file_printf(ms, "%s (%s)", (*buf ? buf : ""), strerror(error));
++	} else if (*buf) {
++		file_printf(ms, "%s", buf);
++	}
++
++	if (buf) {
++		efree(buf);
++	}
++
+ 	ms->event_flags |= EVENT_HAD_ERR;
+ 	ms->error = error;
+ }
+@@ -158,11 +160,9 @@
+ 	file_error(ms, errno, "error reading");
+ }
+ 
+-#ifndef COMPILE_ONLY
+-/*ARGSUSED*/
+ protected int
+-file_buffer(struct magic_set *ms, int fd, const char *inname __attribute__ ((__unused__)),
+-    const void *buf, size_t nb)
++file_buffer(struct magic_set *ms, php_stream *stream, const char *inname, const void *buf,
++    size_t nb)
+ {
+ 	int m = 0, rv = 0, looks_text = 0;
+ 	int mime = ms->flags & MAGIC_MIME;
+@@ -201,10 +201,10 @@
+ 		}
+ 	}
+ #endif
+-#if HAVE_FORK
+-	/* try compression stuff */
++
++#if PHP_FILEINFO_UNCOMPRESS
+ 	if ((ms->flags & MAGIC_NO_CHECK_COMPRESS) == 0)
+-		if ((m = file_zmagic(ms, fd, inname, ubuf, nb)) != 0) {
++		if ((m = file_zmagic(ms, stream, inname, ubuf, nb)) != 0) {
+ 			if ((ms->flags & MAGIC_DEBUG) != 0)
+ 				(void)fprintf(stderr, "zmagic %d\n", m);
+ 			goto done_encoding;
+@@ -219,12 +219,16 @@
+ 		}
+ 
+ 	/* Check if we have a CDF file */
+-	if ((ms->flags & MAGIC_NO_CHECK_CDF) == 0)
+-		if ((m = file_trycdf(ms, fd, ubuf, nb)) != 0) {
+-			if ((ms->flags & MAGIC_DEBUG) != 0)
+-				(void)fprintf(stderr, "cdf %d\n", m);
+-			goto done;
++	if ((ms->flags & MAGIC_NO_CHECK_CDF) == 0) {
++		php_socket_t fd;
++			if (stream && SUCCESS == php_stream_cast(stream, PHP_STREAM_AS_FD, (void **)&fd, 0)) {
++			if ((m = file_trycdf(ms, fd, ubuf, nb)) != 0) {
++				if ((ms->flags & MAGIC_DEBUG) != 0)
++					(void)fprintf(stderr, "cdf %d\n", m);
++				goto done;
++			}
+ 		}
++	}
+ 
+ 	/* try soft magic tests */
+ 	if ((ms->flags & MAGIC_NO_CHECK_SOFT) == 0)
+@@ -278,7 +282,7 @@
+ 		if (file_printf(ms, "%s", code_mime) == -1)
+ 			rv = -1;
+ 	}
+-#if HAVE_FORK
++#if PHP_FILEINFO_UNCOMPRESS
+  done_encoding:
+ #endif
+ 	free(u8buf);
+@@ -287,7 +291,6 @@
+ 
+ 	return m;
+ }
+-#endif
+ 
+ protected int
+ file_reset(struct magic_set *ms)
+@@ -297,11 +300,11 @@
+ 		return -1;
+ 	}
+ 	if (ms->o.buf) {
+-		free(ms->o.buf);
++		efree(ms->o.buf);
+ 		ms->o.buf = NULL;
+ 	}
+ 	if (ms->o.pbuf) {
+-		free(ms->o.pbuf);
++		efree(ms->o.pbuf);
+ 		ms->o.pbuf = NULL;
+ 	}
+ 	ms->event_flags &= ~EVENT_HAD_ERR;
+@@ -320,7 +323,7 @@
+ protected const char *
+ file_getbuffer(struct magic_set *ms)
+ {
+-	char *pbuf, *op, *np;
++	char *op, *np;
+ 	size_t psize, len;
+ 
+ 	if (ms->event_flags & EVENT_HAD_ERR)
+@@ -339,11 +342,10 @@
+ 		return NULL;
+ 	}
+ 	psize = len * 4 + 1;
+-	if ((pbuf = CAST(char *, realloc(ms->o.pbuf, psize))) == NULL) {
++	if ((ms->o.pbuf = CAST(char *, erealloc(ms->o.pbuf, psize))) == NULL) {
+ 		file_oomem(ms, psize);
+ 		return NULL;
+ 	}
+-	ms->o.pbuf = pbuf;
+ 
+ #if defined(HAVE_WCHAR_H) && defined(HAVE_MBRTOWC) && defined(HAVE_WCWIDTH)
+ 	{
+@@ -403,8 +405,8 @@
+ 	if (level >= ms->c.len) {
+ 		len = (ms->c.len = 20 + level) * sizeof(*ms->c.li);
+ 		ms->c.li = CAST(struct level_info *, (ms->c.li == NULL) ?
+-		    malloc(len) :
+-		    realloc(ms->c.li, len));
++		    emalloc(len) :
++		    erealloc(ms->c.li, len));
+ 		if (ms->c.li == NULL) {
+ 			file_oomem(ms, len);
+ 			return -1;
+@@ -427,70 +429,41 @@
+ protected int
+ file_replace(struct magic_set *ms, const char *pat, const char *rep)
+ {
+-	file_regex_t rx;
+-	int rc, rv = -1;
+-
+-	rc = file_regcomp(&rx, pat, REG_EXTENDED);
+-	if (rc) {
+-		file_regerror(&rx, rc, ms);
+-	} else {
+-		regmatch_t rm;
+-		int nm = 0;
+-		while (file_regexec(&rx, ms->o.buf, 1, &rm, 0) == 0) {
+-			ms->o.buf[rm.rm_so] = '\0';
+-			if (file_printf(ms, "%s%s", rep,
+-			    rm.rm_eo != 0 ? ms->o.buf + rm.rm_eo : "") == -1)
+-				goto out;
+-			nm++;
+-		}
+-		rv = nm;
++	zval patt;
++	int opts = 0;
++	pcre_cache_entry *pce;
++	zend_string *res;
++	zval repl;
++	int  rep_cnt = 0;
++
++	(void)setlocale(LC_CTYPE, "C");
++
++	opts |= PCRE_MULTILINE;
++	convert_libmagic_pattern(&patt, (char*)pat, strlen(pat), opts);
++	if ((pce = pcre_get_compiled_regex_cache(Z_STR(patt))) == NULL) {
++		zval_ptr_dtor(&patt);
++		rep_cnt = -1;
++		goto out;
+ 	}
+-out:
+-	file_regfree(&rx);
+-	return rv;
+-}
++	zval_ptr_dtor(&patt);
+ 
+-protected int
+-file_regcomp(file_regex_t *rx, const char *pat, int flags)
+-{
+-#ifdef USE_C_LOCALE
+-	rx->c_lc_ctype = newlocale(LC_CTYPE_MASK, "C", 0);
+-	assert(rx->c_lc_ctype != NULL);
+-	rx->old_lc_ctype = uselocale(rx->c_lc_ctype);
+-	assert(rx->old_lc_ctype != NULL);
+-#endif
+-	rx->pat = pat;
++	ZVAL_STRING(&repl, rep);
++	res = php_pcre_replace_impl(pce, NULL, ms->o.buf, strlen(ms->o.buf), &repl, 0, -1, &rep_cnt);
+ 
+-	return rx->rc = regcomp(&rx->rx, pat, flags);
+-}
+-
+-protected int
+-file_regexec(file_regex_t *rx, const char *str, size_t nmatch,
+-    regmatch_t* pmatch, int eflags)
+-{
+-	assert(rx->rc == 0);
+-	return regexec(&rx->rx, str, nmatch, pmatch, eflags);
+-}
++	zval_ptr_dtor(&repl);
++	if (NULL == res) {
++		rep_cnt = -1;
++		goto out;
++	}
+ 
+-protected void
+-file_regfree(file_regex_t *rx)
+-{
+-	if (rx->rc == 0)
+-		regfree(&rx->rx);
+-#ifdef USE_C_LOCALE
+-	(void)uselocale(rx->old_lc_ctype);
+-	freelocale(rx->c_lc_ctype);
+-#endif
+-}
++	strncpy(ms->o.buf, ZSTR_VAL(res), ZSTR_LEN(res));
++	ms->o.buf[ZSTR_LEN(res)] = '\0';
+ 
+-protected void
+-file_regerror(file_regex_t *rx, int rc, struct magic_set *ms)
+-{
+-	char errmsg[512];
++	zend_string_release(res);
+ 
+-	(void)regerror(rc, &rx->rx, errmsg, sizeof(errmsg));
+-	file_magerror(ms, "regex error %d for `%s', (%s)", rc, rx->pat,
+-	    errmsg);
++out:
++	(void)setlocale(LC_CTYPE, "");
++	return rep_cnt;
+ }
+ 
+ protected file_pushbuf_t *
+@@ -501,7 +474,7 @@
+ 	if (ms->event_flags & EVENT_HAD_ERR)
+ 		return NULL;
+ 
+-	if ((pb = (CAST(file_pushbuf_t *, malloc(sizeof(*pb))))) == NULL)
++	if ((pb = (CAST(file_pushbuf_t *, emalloc(sizeof(*pb))))) == NULL)
+ 		return NULL;
+ 
+ 	pb->buf = ms->o.buf;
+@@ -519,8 +492,8 @@
+ 	char *rbuf;
+ 
+ 	if (ms->event_flags & EVENT_HAD_ERR) {
+-		free(pb->buf);
+-		free(pb);
++		efree(pb->buf);
++		efree(pb);
+ 		return NULL;
+ 	}
+ 
+@@ -529,7 +502,7 @@
+ 	ms->o.buf = pb->buf;
+ 	ms->offset = pb->offset;
+ 
+-	free(pb);
++	efree(pb);
+ 	return rbuf;
+ }
+ 
+@@ -550,10 +523,11 @@
+ 		if (ptr >= eptr - 3)
+ 			break;
+ 		*ptr++ = '\\';
+-		*ptr++ = ((CAST(unsigned int, *s) >> 6) & 7) + '0';
+-		*ptr++ = ((CAST(unsigned int, *s) >> 3) & 7) + '0';
+-		*ptr++ = ((CAST(unsigned int, *s) >> 0) & 7) + '0';
++		*ptr++ = ((*s >> 6) & 7) + '0';
++		*ptr++ = ((*s >> 3) & 7) + '0';
++		*ptr++ = ((*s >> 0) & 7) + '0';
+ 	}
+ 	*ptr = '\0';
+ 	return buf;
+ }
++
+Common subdirectories: libmagic.orig/.libs and libmagic/.libs
+diff -u libmagic.orig/magic.c libmagic/magic.c
+--- libmagic.orig/magic.c	2017-04-10 11:41:09.737268025 +0800
++++ libmagic/magic.c	2017-04-10 11:41:14.413268021 +0800
+@@ -25,11 +25,6 @@
+  * SUCH DAMAGE.
+  */
+ 
+-#ifdef WIN32
+-#include <windows.h>
+-#include <shlwapi.h>
+-#endif
+-
+ #include "file.h"
+ 
+ #ifndef	lint
+@@ -39,15 +34,24 @@
+ #include "magic.h"
+ 
+ #include <stdlib.h>
++#ifdef PHP_WIN32
++#include "win32/unistd.h"
++#else
+ #include <unistd.h>
++#endif
+ #include <string.h>
+-#ifdef QUICK
+-#include <sys/mman.h>
++#ifdef PHP_WIN32
++# include "config.w32.h"
++#else
++# include "php_config.h"
+ #endif
+-#ifdef HAVE_LIMITS_H
+-#include <limits.h>	/* for PIPE_BUF */
++
++#ifdef PHP_WIN32
++#include <shlwapi.h>
+ #endif
+ 
++#include <limits.h>	/* for PIPE_BUF */
++
+ #if defined(HAVE_UTIMES)
+ # include <sys/time.h>
+ #elif defined(HAVE_UTIME)
+@@ -71,18 +75,25 @@
+ #endif
+ #endif
+ 
++#ifdef PHP_WIN32
++# undef S_IFLNK
++# undef S_IFIFO
++#endif
++
+ private void close_and_restore(const struct magic_set *, const char *, int,
+-    const struct stat *);
++    const zend_stat_t *);
+ private int unreadable_info(struct magic_set *, mode_t, const char *);
++#if 0
+ private const char* get_default_magic(void);
+-#ifndef COMPILE_ONLY
+-private const char *file_or_fd(struct magic_set *, const char *, int);
+ #endif
++private const char *file_or_stream(struct magic_set *, const char *, php_stream *);
+ 
+ #ifndef	STDIN_FILENO
+ #define	STDIN_FILENO	0
+ #endif
+ 
++/* XXX this functionality is excluded in php, enable it in apprentice.c:340 */
++#if 0
+ private const char *
+ get_default_magic(void)
+ {
+@@ -90,7 +101,7 @@
+ 	static char *default_magic;
+ 	char *home, *hmagicpath;
+ 
+-#ifndef WIN32
++#ifndef PHP_WIN32
+ 	struct stat st;
+ 
+ 	if (default_magic) {
+@@ -104,17 +115,17 @@
+ 		return MAGIC;
+ 	if (stat(hmagicpath, &st) == -1) {
+ 		free(hmagicpath);
+-		if (asprintf(&hmagicpath, "%s/.magic", home) < 0)
++	if (asprintf(&hmagicpath, "%s/.magic", home) < 0)
++		return MAGIC;
++	if (stat(hmagicpath, &st) == -1)
++		goto out;
++	if (S_ISDIR(st.st_mode)) {
++		free(hmagicpath);
++		if (asprintf(&hmagicpath, "%s/%s", home, hmagic) < 0)
+ 			return MAGIC;
+-		if (stat(hmagicpath, &st) == -1)
++		if (access(hmagicpath, R_OK) == -1)
+ 			goto out;
+-		if (S_ISDIR(st.st_mode)) {
+-			free(hmagicpath);
+-			if (asprintf(&hmagicpath, "%s/%s", home, hmagic) < 0)
+-				return MAGIC;
+-			if (access(hmagicpath, R_OK) == -1)
+-				goto out;
+-		}
++	}
+ 	}
+ 
+ 	if (asprintf(&default_magic, "%s:%s", hmagicpath, MAGIC) < 0)
+@@ -126,10 +137,9 @@
+ 	free(hmagicpath);
+ 	return MAGIC;
+ #else
+-	char *hmagicp;
++	char *hmagicp = hmagicpath;
+ 	char *tmppath = NULL;
+ 	LPTSTR dllpath;
+-	hmagicpath = NULL;
+ 
+ #define APPENDPATH() \
+ 	do { \
+@@ -212,6 +222,7 @@
+ 
+ 	return action == FILE_LOAD ? get_default_magic() : MAGIC;
+ }
++#endif
+ 
+ public struct magic_set *
+ magic_open(int flags)
+@@ -258,20 +269,6 @@
+ 	return file_apprentice(ms, magicfile, FILE_LOAD);
+ }
+ 
+-#ifndef COMPILE_ONLY
+-/*
+- * Install a set of compiled magic buffers.
+- */
+-public int
+-magic_load_buffers(struct magic_set *ms, void **bufs, size_t *sizes,
+-    size_t nbufs)
+-{
+-	if (ms == NULL)
+-		return -1;
+-	return buffer_apprentice(ms, (struct magic **)bufs, sizes, nbufs);
+-}
+-#endif
+-
+ public int
+ magic_compile(struct magic_set *ms, const char *magicfile)
+ {
+@@ -280,13 +277,6 @@
+ 	return file_apprentice(ms, magicfile, FILE_COMPILE);
+ }
+ 
+-public int
+-magic_check(struct magic_set *ms, const char *magicfile)
+-{
+-	if (ms == NULL)
+-		return -1;
+-	return file_apprentice(ms, magicfile, FILE_CHECK);
+-}
+ 
+ public int
+ magic_list(struct magic_set *ms, const char *magicfile)
+@@ -298,11 +288,8 @@
+ 
+ private void
+ close_and_restore(const struct magic_set *ms, const char *name, int fd,
+-    const struct stat *sb)
++    const zend_stat_t *sb)
+ {
+-	if (fd == STDIN_FILENO || name == NULL)
+-		return;
+-	(void) close(fd);
+ 
+ 	if ((ms->flags & MAGIC_PRESERVE_ATIME) != 0) {
+ 		/*
+@@ -329,7 +316,6 @@
+ 	}
+ }
+ 
+-#ifndef COMPILE_ONLY
+ 
+ /*
+  * find type of descriptor
+@@ -339,7 +325,7 @@
+ {
+ 	if (ms == NULL)
+ 		return NULL;
+-	return file_or_fd(ms, NULL, fd);
++	return file_or_stream(ms, NULL, NULL);
+ }
+ 
+ /*
+@@ -350,31 +336,41 @@
+ {
+ 	if (ms == NULL)
+ 		return NULL;
+-	return file_or_fd(ms, inname, STDIN_FILENO);
++	return file_or_stream(ms, inname, NULL);
++}
++
++public const char *
++magic_stream(struct magic_set *ms, php_stream *stream)
++{
++	if (ms == NULL)
++		return NULL;
++	return file_or_stream(ms, NULL, stream);
+ }
+ 
+ private const char *
+-file_or_fd(struct magic_set *ms, const char *inname, int fd)
++file_or_stream(struct magic_set *ms, const char *inname, php_stream *stream)
+ {
+ 	int	rv = -1;
+ 	unsigned char *buf;
+-	struct stat	sb;
++	zend_stat_t   sb;
+ 	ssize_t nbytes = 0;	/* number of bytes read from a datafile */
+-	int	ispipe = 0;
+-	off_t	pos = (off_t)-1;
++	int no_in_stream = 0;
+ 
+-	if (file_reset(ms) == -1)
+-		goto out;
++	if (!inname && !stream) {
++		return NULL;
++	}
+ 
+ 	/*
+ 	 * one extra for terminating '\0', and
+ 	 * some overlapping space for matches near EOF
+ 	 */
+ #define SLOP (1 + sizeof(union VALUETYPE))
+-	if ((buf = CAST(unsigned char *, malloc(HOWMANY + SLOP))) == NULL)
+-		return NULL;
++	buf = emalloc(HOWMANY + SLOP);
+ 
+-	switch (file_fsmagic(ms, inname, &sb)) {
++	if (file_reset(ms) == -1)
++		goto done;
++
++	switch (file_fsmagic(ms, inname, &sb, stream)) {
+ 	case -1:		/* error */
+ 		goto done;
+ 	case 0:			/* nothing found */
+@@ -384,103 +380,44 @@
+ 		goto done;
+ 	}
+ 
+-#ifdef WIN32
+-	/* Place stdin in binary mode, so EOF (Ctrl+Z) doesn't stop early. */
+-	if (fd == STDIN_FILENO)
+-		_setmode(STDIN_FILENO, O_BINARY);
+-#endif
++	errno = 0;
+ 
+-	if (inname == NULL) {
+-		if (fstat(fd, &sb) == 0 && S_ISFIFO(sb.st_mode))
+-			ispipe = 1;
+-		else
+-			pos = lseek(fd, (off_t)0, SEEK_CUR);
+-	} else {
+-		int flags = O_RDONLY|O_BINARY;
+-		int okstat = stat(inname, &sb) == 0;
+-
+-		if (okstat && S_ISFIFO(sb.st_mode)) {
+-#ifdef O_NONBLOCK
+-			flags |= O_NONBLOCK;
+-#endif
+-			ispipe = 1;
+-		}
++	if (!stream && inname) {
++		no_in_stream = 1;
++		stream = php_stream_open_wrapper((char *)inname, "rb", REPORT_ERRORS, NULL);
++	}
+ 
+-		errno = 0;
+-		if ((fd = open(inname, flags)) < 0) {
+-#ifdef WIN32
+-			/*
+-			 * Can't stat, can't open.  It may have been opened in
+-			 * fsmagic, so if the user doesn't have read permission,
+-			 * allow it to say so; otherwise an error was probably
+-			 * displayed in fsmagic.
+-			 */
+-			if (!okstat && errno == EACCES) {
+-				sb.st_mode = S_IFBLK;
+-				okstat = 1;
+-			}
+-#endif
+-			if (okstat &&
+-			    unreadable_info(ms, sb.st_mode, inname) == -1)
+-				goto done;
+-			rv = 0;
++	if (!stream) {
++		if (unreadable_info(ms, sb.st_mode, inname) == -1)
+ 			goto done;
+-		}
++		rv = 0;
++		goto done;
++	}
++
+ #ifdef O_NONBLOCK
+-		if ((flags = fcntl(fd, F_GETFL)) != -1) {
+-			flags &= ~O_NONBLOCK;
+-			(void)fcntl(fd, F_SETFL, flags);
+-		}
++/* we should be already be in non blocking mode for network socket */
+ #endif
+-	}
+ 
+ 	/*
+ 	 * try looking at the first HOWMANY bytes
+ 	 */
+-	if (ispipe) {
+-		ssize_t r = 0;
+-
+-		while ((r = sread(fd, (void *)&buf[nbytes],
+-		    (size_t)(HOWMANY - nbytes), 1)) > 0) {
+-			nbytes += r;
+-			if (r < PIPE_BUF) break;
+-		}
+-
+-		if (nbytes == 0) {
+-			/* We can not read it, but we were able to stat it. */
+-			if (unreadable_info(ms, sb.st_mode, inname) == -1)
+-				goto done;
+-			rv = 0;
+-			goto done;
+-		}
+-
+-	} else {
+-		/* Windows refuses to read from a big console buffer. */
+-		size_t howmany =
+-#if defined(WIN32) && HOWMANY > 8 * 1024
+-				_isatty(fd) ? 8 * 1024 :
+-#endif
+-				HOWMANY;
+-		if ((nbytes = read(fd, (char *)buf, howmany)) == -1) {
+-			if (inname == NULL && fd != STDIN_FILENO)
+-				file_error(ms, errno, "cannot read fd %d", fd);
+-			else
+-				file_error(ms, errno, "cannot read `%s'",
+-				    inname == NULL ? "/dev/stdin" : inname);
+-			goto done;
+-		}
++	if ((nbytes = php_stream_read(stream, (char *)buf, HOWMANY)) < 0) {
++		file_error(ms, errno, "cannot read `%s'", inname);
++		goto done;
+ 	}
+ 
+ 	(void)memset(buf + nbytes, 0, SLOP); /* NUL terminate */
+-	if (file_buffer(ms, fd, inname, buf, (size_t)nbytes) == -1)
++	if (file_buffer(ms, stream, inname, buf, (size_t)nbytes) == -1)
+ 		goto done;
+ 	rv = 0;
+ done:
+-	free(buf);
+-	if (pos != (off_t)-1)
+-		(void)lseek(fd, pos, SEEK_SET);
+-	close_and_restore(ms, inname, fd, &sb);
+-out:
++	efree(buf);
++
++	if (no_in_stream && stream) {
++		php_stream_close(stream);
++	}
++
++	close_and_restore(ms, inname, 0, &sb);
+ 	return rv == 0 ? file_getbuffer(ms) : NULL;
+ }
+ 
+@@ -494,14 +431,13 @@
+ 		return NULL;
+ 	/*
+ 	 * The main work is done here!
+-	 * We have the file name and/or the data buffer to be identified.
++	 * We have the file name and/or the data buffer to be identified. 
+ 	 */
+-	if (file_buffer(ms, -1, NULL, buf, nb) == -1) {
++	if (file_buffer(ms, NULL, NULL, buf, nb) == -1) {
+ 		return NULL;
+ 	}
+ 	return file_getbuffer(ms);
+ }
+-#endif
+ 
+ public const char *
+ magic_error(struct magic_set *ms)
+diff -u libmagic.orig/magic.h libmagic/magic.h
+--- libmagic.orig/magic.h	2017-04-10 11:41:09.731268025 +0800
++++ libmagic/magic.h	2017-04-10 11:41:14.413268021 +0800
+@@ -88,6 +88,7 @@
+ 
+ const char *magic_getpath(const char *, int);
+ const char *magic_file(magic_t, const char *);
++const char *magic_stream(magic_t, php_stream *);
+ const char *magic_descriptor(magic_t, int);
+ const char *magic_buffer(magic_t, const void *, size_t);
+ 
+@@ -99,7 +100,6 @@
+ int magic_load_buffers(magic_t, void **, size_t *, size_t);
+ 
+ int magic_compile(magic_t, const char *);
+-int magic_check(magic_t, const char *);
+ int magic_list(magic_t, const char *);
+ int magic_errno(magic_t);
+ 
+diff -u libmagic.orig/patchlevel.h libmagic/patchlevel.h
+--- libmagic.orig/patchlevel.h	2017-04-10 11:41:09.731268025 +0800
++++ libmagic/patchlevel.h	2017-04-10 11:41:14.414268021 +0800
+@@ -1,34 +1,43 @@
+ #define	FILE_VERSION_MAJOR	5
+-#define	patchlevel		6
++#define	patchlevel		22
+ 
+ /*
+  * Patchlevel file for Ian Darwin's MAGIC command.
+- * $File: patchlevel.h,v 1.76 2011/01/17 16:40:41 christos Exp $
++ * $File: patchlevel.h,v 1.68 2008/03/22 21:39:43 christos Exp $
+  *
+- * $Log: patchlevel.h,v $
+- * Revision 1.77  2011/04/15 22:07:27  christos
+- * fix the patchlevel.
++ * $Log$
++ * Revision 1.9  2015/03/06 22:27:12 ab
++ * Update libmagic to 5.2X
+  *
+- * Revision 1.76  2011/01/17 16:40:41  christos
+- * welcome to 5_05
++ * $Log$
++ * Revision 1.8  2014/02/18 22:27:12 ab
++ * Update libmagic to 5.17
+  *
+- * Revision 1.75  2010/01/22 21:08:13  christos
+- * welcome to 5.04
++ * $Log$
++ * Revision 1.7  2013/03/26 22:27:12 ab
++ * Update libmagic to 5.14
+  *
+- * Revision 1.74  2009/05/06 20:32:48  christos
+- * welcome to 5.03
++ * $Log$
++ * Revision 1.6  2012/03/26 21:01:37 ab
++ * Update libmagic to 5.11
+  *
+- * Revision 1.73  2009/05/04 15:15:13  christos
+- * 5.02...
++ * Revision 1.5  2012/03/25 13:54:37  ab
++ * Update libmagic to 5.04
+  *
+- * Revision 1.72  2009/04/30 21:20:15  christos
+- * 5.01 we are almost here.
++ * Revision 1.4  2009/05/04 20:52:43  scottmac
++ * Update libmagic to 5.02
+  *
+- * Revision 1.71  2009/01/21 19:09:42  christos
+- * file 5.0
++ * Revision 1.3  2009/03/15 23:02:35  scottmac
++ * Update fileinfo to libmagic 5.00 and remove dependency on dirent.h on Windows
+  *
+- * Revision 1.70  2008/08/30 10:01:01  christos
+- * file 4.26
++ * Revision 1.2  2008/11/02 16:09:27  scottmac
++ * Update libmagic to 4.26 and add support for v6 of the magic file format.
++ *
++ * Revision 1.1  2008/07/11 14:13:50  derick
++ * - Move lib to libmagic
++ *
++ * Revision 1.1  2008/07/11 14:10:50  derick
++ * - Step one for bundling the libmagic library. Some config.m4 issues left.
+  *
+  * Revision 1.69  2008/07/02 15:27:05  christos
+  * welcome to 4.25
+diff -u libmagic.orig/print.c libmagic/print.c
+--- libmagic.orig/print.c	2017-04-10 11:41:09.738268025 +0800
++++ libmagic/print.c	2017-04-10 11:41:14.414268021 +0800
+@@ -28,13 +28,17 @@
+ /*
+  * print.c - debugging printout routines
+  */
++#define _GNU_SOURCE
++#include "php.h"
+ 
+ #include "file.h"
++#include "cdf.h"
+ 
+ #ifndef lint
+ FILE_RCSID("@(#)$File: print.c,v 1.78 2015/01/06 02:04:10 christos Exp $")
+ #endif  /* lint */
+ 
++#include <stdio.h>
+ #include <string.h>
+ #include <stdarg.h>
+ #include <stdlib.h>
+@@ -43,201 +47,42 @@
+ #endif
+ #include <time.h>
+ 
+-#define SZOF(a)	(sizeof(a) / sizeof(a[0]))
+-
+-#include "cdf.h"
+-
+-#ifndef COMPILE_ONLY
+-protected void
+-file_mdump(struct magic *m)
+-{
+-	static const char optyp[] = { FILE_OPS };
+-	char tbuf[26];
+-
+-	(void) fprintf(stderr, "%u: %.*s %u", m->lineno,
+-	    (m->cont_level & 7) + 1, ">>>>>>>>", m->offset);
+-
+-	if (m->flag & INDIR) {
+-		(void) fprintf(stderr, "(%s,",
+-		    /* Note: type is unsigned */
+-		    (m->in_type < file_nnames) ? file_names[m->in_type] :
+-		    "*bad in_type*");
+-		if (m->in_op & FILE_OPINVERSE)
+-			(void) fputc('~', stderr);
+-		(void) fprintf(stderr, "%c%u),",
+-		    ((size_t)(m->in_op & FILE_OPS_MASK) <
+-		    SZOF(optyp)) ? optyp[m->in_op & FILE_OPS_MASK] : '?',
+-		    m->in_offset);
+-	}
+-	(void) fprintf(stderr, " %s%s", (m->flag & UNSIGNED) ? "u" : "",
+-	    /* Note: type is unsigned */
+-	    (m->type < file_nnames) ? file_names[m->type] : "*bad type");
+-	if (m->mask_op & FILE_OPINVERSE)
+-		(void) fputc('~', stderr);
+-
+-	if (IS_STRING(m->type)) {
+-		if (m->str_flags) {
+-			(void) fputc('/', stderr);
+-			if (m->str_flags & STRING_COMPACT_WHITESPACE) 
+-				(void) fputc(CHAR_COMPACT_WHITESPACE, stderr);
+-			if (m->str_flags & STRING_COMPACT_OPTIONAL_WHITESPACE) 
+-				(void) fputc(CHAR_COMPACT_OPTIONAL_WHITESPACE,
+-				    stderr);
+-			if (m->str_flags & STRING_IGNORE_LOWERCASE) 
+-				(void) fputc(CHAR_IGNORE_LOWERCASE, stderr);
+-			if (m->str_flags & STRING_IGNORE_UPPERCASE) 
+-				(void) fputc(CHAR_IGNORE_UPPERCASE, stderr);
+-			if (m->str_flags & REGEX_OFFSET_START) 
+-				(void) fputc(CHAR_REGEX_OFFSET_START, stderr);
+-			if (m->str_flags & STRING_TEXTTEST)
+-				(void) fputc(CHAR_TEXTTEST, stderr);
+-			if (m->str_flags & STRING_BINTEST)
+-				(void) fputc(CHAR_BINTEST, stderr);
+-			if (m->str_flags & PSTRING_1_BE)
+-				(void) fputc(CHAR_PSTRING_1_BE, stderr);
+-			if (m->str_flags & PSTRING_2_BE)
+-				(void) fputc(CHAR_PSTRING_2_BE, stderr);
+-			if (m->str_flags & PSTRING_2_LE)
+-				(void) fputc(CHAR_PSTRING_2_LE, stderr);
+-			if (m->str_flags & PSTRING_4_BE)
+-				(void) fputc(CHAR_PSTRING_4_BE, stderr);
+-			if (m->str_flags & PSTRING_4_LE)
+-				(void) fputc(CHAR_PSTRING_4_LE, stderr);
+-			if (m->str_flags & PSTRING_LENGTH_INCLUDES_ITSELF)
+-				(void) fputc(
+-				    CHAR_PSTRING_LENGTH_INCLUDES_ITSELF,
+-				    stderr);
+-		}
+-		if (m->str_range)
+-			(void) fprintf(stderr, "/%u", m->str_range);
+-	}
+-	else {
+-		if ((size_t)(m->mask_op & FILE_OPS_MASK) < SZOF(optyp))
+-			(void) fputc(optyp[m->mask_op & FILE_OPS_MASK], stderr);
+-		else
+-			(void) fputc('?', stderr);
+-			
+-		if (m->num_mask) {
+-			(void) fprintf(stderr, "%.8llx",
+-			    (unsigned long long)m->num_mask);
+-		}
+-	}
+-	(void) fprintf(stderr, ",%c", m->reln);
+-
+-	if (m->reln != 'x') {
+-		switch (m->type) {
+-		case FILE_BYTE:
+-		case FILE_SHORT:
+-		case FILE_LONG:
+-		case FILE_LESHORT:
+-		case FILE_LELONG:
+-		case FILE_MELONG:
+-		case FILE_BESHORT:
+-		case FILE_BELONG:
+-		case FILE_INDIRECT:
+-			(void) fprintf(stderr, "%d", m->value.l);
+-			break;
+-		case FILE_BEQUAD:
+-		case FILE_LEQUAD:
+-		case FILE_QUAD:
+-			(void) fprintf(stderr, "%" INT64_T_FORMAT "d",
+-			    (unsigned long long)m->value.q);
+-			break;
+-		case FILE_PSTRING:
+-		case FILE_STRING:
+-		case FILE_REGEX:
+-		case FILE_BESTRING16:
+-		case FILE_LESTRING16:
+-		case FILE_SEARCH:
+-			file_showstr(stderr, m->value.s, (size_t)m->vallen);
+-			break;
+-		case FILE_DATE:
+-		case FILE_LEDATE:
+-		case FILE_BEDATE:
+-		case FILE_MEDATE:
+-			(void)fprintf(stderr, "%s,",
+-			    file_fmttime(m->value.l, FILE_T_LOCAL, tbuf));
+-			break;
+-		case FILE_LDATE:
+-		case FILE_LELDATE:
+-		case FILE_BELDATE:
+-		case FILE_MELDATE:
+-			(void)fprintf(stderr, "%s,",
+-			    file_fmttime(m->value.l, 0, tbuf));
+-			break;
+-		case FILE_QDATE:
+-		case FILE_LEQDATE:
+-		case FILE_BEQDATE:
+-			(void)fprintf(stderr, "%s,",
+-			    file_fmttime(m->value.q, FILE_T_LOCAL, tbuf));
+-			break;
+-		case FILE_QLDATE:
+-		case FILE_LEQLDATE:
+-		case FILE_BEQLDATE:
+-			(void)fprintf(stderr, "%s,",
+-			    file_fmttime(m->value.q, 0, tbuf));
+-			break;
+-		case FILE_QWDATE:
+-		case FILE_LEQWDATE:
+-		case FILE_BEQWDATE:
+-			(void)fprintf(stderr, "%s,",
+-			    file_fmttime(m->value.q, FILE_T_WINDOWS, tbuf));
+-			break;
+-		case FILE_FLOAT:
+-		case FILE_BEFLOAT:
+-		case FILE_LEFLOAT:
+-			(void) fprintf(stderr, "%G", m->value.f);
+-			break;
+-		case FILE_DOUBLE:
+-		case FILE_BEDOUBLE:
+-		case FILE_LEDOUBLE:
+-			(void) fprintf(stderr, "%G", m->value.d);
+-			break;
+-		case FILE_DEFAULT:
+-			/* XXX - do anything here? */
+-			break;
+-		case FILE_USE:
+-		case FILE_NAME:
+-			(void) fprintf(stderr, "'%s'", m->value.s);
+-			break;
+-		default:
+-			(void) fprintf(stderr, "*bad type %d*", m->type);
+-			break;
+-		}
+-	}
+-	(void) fprintf(stderr, ",\"%s\"]\n", m->desc);
+-}
++#ifdef PHP_WIN32
++# define asctime_r php_asctime_r
++# define ctime_r php_ctime_r
+ #endif
+ 
++#define SZOF(a)	(sizeof(a) / sizeof(a[0]))
++
+ /*VARARGS*/
+ protected void
+ file_magwarn(struct magic_set *ms, const char *f, ...)
+ {
+ 	va_list va;
++	char *expanded_format = NULL;
++	int expanded_len;
+ 
+-	/* cuz we use stdout for most, stderr here */
+-	(void) fflush(stdout); 
+-
+-	if (ms->file)
+-		(void) fprintf(stderr, "%s, %lu: ", ms->file,
+-		    (unsigned long)ms->line);
+-	(void) fprintf(stderr, "Warning: ");
+ 	va_start(va, f);
+-	(void) vfprintf(stderr, f, va);
++	expanded_len = vasprintf(&expanded_format, f, va);
+ 	va_end(va);
+-	(void) fputc('\n', stderr);
++
++	if (expanded_len >= 0 && expanded_format) {
++		php_error_docref(NULL, E_NOTICE, "Warning: %s", expanded_format);
++
++		free(expanded_format);
++	}
+ }
+ 
+ protected const char *
+ file_fmttime(uint64_t v, int flags, char *buf)
+ {
+ 	char *pp;
+-	time_t t;
+-	struct tm *tm, tmz;
++	time_t t = (time_t)v;
++	struct tm *tm = NULL;
+ 
+ 	if (flags & FILE_T_WINDOWS) {
+-		struct timespec ts;
+-		cdf_timestamp_to_timespec(&ts, v);
++		struct timeval ts;
++		cdf_timestamp_to_timespec(&ts, t);
+ 		t = ts.tv_sec;
+ 	} else {
+ 		// XXX: perhaps detect and print something if overflow
+@@ -246,9 +91,29 @@
+ 	}
+ 
+ 	if (flags & FILE_T_LOCAL) {
+-		tm = localtime_r(&t, &tmz);
++		pp = ctime_r(&t, buf);
+ 	} else {
+-		tm = gmtime_r(&t, &tmz);
++#ifndef HAVE_DAYLIGHT
++		private int daylight = 0;
++#ifdef HAVE_TM_ISDST
++		private time_t now = (time_t)0;
++
++		if (now == (time_t)0) {
++			struct tm *tm1;
++			(void)time(&now);
++			tm1 = localtime(&now);
++			if (tm1 == NULL)
++				goto out;
++			daylight = tm1->tm_isdst;
++		}
++#endif /* HAVE_TM_ISDST */
++#endif /* HAVE_DAYLIGHT */
++		if (daylight)
++			t += 3600;
++		tm = gmtime(&t);
++		if (tm == NULL)
++			goto out;
++		pp = asctime_r(tm, buf);
+ 	}
+ 	if (tm == NULL)
+ 		goto out;
+diff -u libmagic.orig/readcdf.c libmagic/readcdf.c
+--- libmagic.orig/readcdf.c	2017-04-10 11:41:09.737268025 +0800
++++ libmagic/readcdf.c	2017-04-10 11:41:14.414268021 +0800
+@@ -26,15 +26,21 @@
+ #include "file.h"
+ 
+ #ifndef lint
+-FILE_RCSID("@(#)$File: readcdf.c,v 1.51 2015/01/11 16:58:25 christos Exp $")
++FILE_RCSID("@(#)$File: readcdf.c,v 1.50 2015/01/02 21:29:39 christos Exp $")
+ #endif
+ 
+-#include <assert.h>
+ #include <stdlib.h>
++#ifdef PHP_WIN32
++#include "win32/unistd.h"
++#else
+ #include <unistd.h>
++#endif
+ #include <string.h>
+ #include <time.h>
+ #include <ctype.h>
++#if defined(HAVE_LOCALE_H)
++#include <locale.h>
++#endif
+ 
+ #include "cdf.h"
+ #include "magic.h"
+@@ -71,6 +77,10 @@
+ 	{ NULL,				NULL,			},
+ };
+ 
++#ifdef PHP_WIN32
++# define strcasestr strstr
++#endif
++
+ static const struct cv {
+ 	uint64_t clsid[2];
+ 	const char *mime;
+@@ -81,7 +91,7 @@
+ 	},
+ 	{	{ 0,			 0			},
+ 		NULL,
+-	},
++	}
+ }, clsid2desc[] = {
+ 	{
+ 		{ 0x00000000000c1084ULL, 0x46000000000000c0ULL  },
+@@ -100,10 +110,6 @@
+ 		if (clsid[0] == cv[i].clsid[0] && clsid[1] == cv[i].clsid[1])
+ 			return cv[i].mime;
+ 	}
+-#ifdef CDF_DEBUG
+-	fprintf(stderr, "unknown mime %" PRIx64 ", %" PRIx64 "\n", clsid[0],
+-	    clsid[1]);
+-#endif
+ 	return NULL;
+ }
+ 
+@@ -112,26 +118,14 @@
+ {
+ 	size_t i;
+ 	const char *rv = NULL;
+-#ifdef USE_C_LOCALE
+-	locale_t old_lc_ctype, c_lc_ctype;
+ 
+-	c_lc_ctype = newlocale(LC_CTYPE_MASK, "C", 0);
+-	assert(c_lc_ctype != NULL);
+-	old_lc_ctype = uselocale(c_lc_ctype);
+-	assert(old_lc_ctype != NULL);
+-#endif
++	(void)setlocale(LC_CTYPE, "C");
+ 	for (i = 0; nv[i].pattern != NULL; i++)
+ 		if (strcasestr(vbuf, nv[i].pattern) != NULL) {
+ 			rv = nv[i].mime;
+ 			break;
+ 		}
+-#ifdef CDF_DEBUG
+-	fprintf(stderr, "unknown app %s\n", vbuf);
+-#endif
+-#ifdef USE_C_LOCALE
+-	(void)uselocale(old_lc_ctype);
+-	freelocale(c_lc_ctype);
+-#endif
++	(void)setlocale(LC_CTYPE, "");
+ 	return rv;
+ }
+ 
+@@ -141,12 +135,14 @@
+ {
+         size_t i;
+         cdf_timestamp_t tp;
+-        struct timespec ts;
++        struct timeval ts;
+         char buf[64];
+         const char *str = NULL;
+         const char *s;
+         int len;
+ 
++	memset(&ts, 0, sizeof(ts));
++
+         if (!NOTMIME(ms) && root_storage)
+ 		str = cdf_clsid_to_mime(root_storage->d_storage_uuid,
+ 		    clsid2mime);
+@@ -224,8 +220,11 @@
+                                                 return -1;
+                                 } else {
+                                         char *c, *ec;
+-                                        cdf_timestamp_to_timespec(&ts, tp);
+-                                        c = cdf_ctime(&ts.tv_sec, tbuf);
++					const time_t sec = ts.tv_sec;
++                                        if (cdf_timestamp_to_timespec(&ts, tp) == -1) {
++											return -1;
++										}
++                                        c = cdf_ctime(&sec, tbuf);
+                                         if (c != NULL &&
+ 					    (ec = strchr(c, '\n')) != NULL)
+ 						*ec = '\0';
+@@ -362,7 +361,7 @@
+ 	int i;
+ 
+ 	if ((i = cdf_read_user_stream(info, h, sat, ssat, sst,
+-	    dir, "Catalog", scn)) == -1)
++	    dir, "Catalog", scn)) <= 0)
+ 		return i;
+ #ifdef CDF_DEBUG
+ 	cdf_dump_catalog(&h, &scn);
+diff -u libmagic.orig/softmagic.c libmagic/softmagic.c
+--- libmagic.orig/softmagic.c	2017-04-10 11:41:09.730268025 +0800
++++ libmagic/softmagic.c	2017-04-10 11:41:14.414268021 +0800
+@@ -36,11 +36,19 @@
+ #endif	/* lint */
+ 
+ #include "magic.h"
+-#include <assert.h>
+ #include <string.h>
+ #include <ctype.h>
+ #include <stdlib.h>
+ #include <time.h>
++#if defined(HAVE_LOCALE_H)
++#include <locale.h>
++#endif
++
++#ifndef PREG_OFFSET_CAPTURE
++# define PREG_OFFSET_CAPTURE                 (1<<8)
++#endif
++
++
+ 
+ private int match(struct magic_set *, struct magic *, uint32_t,
+     const unsigned char *, size_t, size_t, int, int, int, uint16_t,
+@@ -91,8 +99,8 @@
+ 	return 0;
+ }
+ 
+-#define FILE_FMTDEBUG
+-#ifdef FILE_FMTDEBUG
++
++#if defined(FILE_FMTDEBUG) && defined(HAVE_FMTCHECK)
+ #define F(a, b, c) file_fmtcheck((a), (b), (c), __FILE__, __LINE__)
+ 
+ private const char * __attribute__((__format_arg__(3)))
+@@ -106,8 +114,10 @@
+ 		    " with `%s'", file, line, m->desc, def);
+ 	return ptr;
+ }
+-#else
++#elif defined(HAVE_FMTCHECK)
+ #define F(a, b, c) fmtcheck((b)->desc, (c))
++#else
++#define F(a, b, c) ((b)->desc)
+ #endif
+ 
+ /*
+@@ -160,7 +170,7 @@
+ 		struct magic *m = &magic[magindex];
+ 
+ 		if (m->type != FILE_NAME)
+-		if ((IS_STRING(m->type) &&
++		if ((IS_LIBMAGIC_STRING(m->type) &&
+ #define FLT (STRING_BINTEST | STRING_TEXTTEST)
+ 		     ((text && (m->str_flags & FLT) == STRING_BINTEST) ||
+ 		      (!text && (m->str_flags & FLT) == STRING_TEXTTEST))) ||
+@@ -369,42 +379,26 @@
+ private int
+ check_fmt(struct magic_set *ms, struct magic *m)
+ {
+-	file_regex_t rx;
+-	int rc, rv = -1;
++	pcre *pce;
++	int re_options, rv = -1;
++	pcre_extra *re_extra;
++	zend_string *pattern;
+ 
+ 	if (strchr(m->desc, '%') == NULL)
+ 		return 0;
+ 
+-	rc = file_regcomp(&rx, "%[-0-9\\.]*s", REG_EXTENDED|REG_NOSUB);
+-	if (rc) {
+-		file_regerror(&rx, rc, ms);
++	(void)setlocale(LC_CTYPE, "C");
++	pattern = zend_string_init("~%[-0-9.]*s~", sizeof("~%[-0-9.]*s~") - 1, 0);
++	if ((pce = pcre_get_compiled_regex(pattern, &re_extra, &re_options)) == NULL) {
++		rv = -1;
+ 	} else {
+-		rc = file_regexec(&rx, m->desc, 0, 0, 0);
+-		rv = !rc;
++	 	rv = !pcre_exec(pce, re_extra, m->desc, strlen(m->desc), 0, re_options, NULL, 0);
+ 	}
+-	file_regfree(&rx);
++	zend_string_release(pattern);
++	(void)setlocale(LC_CTYPE, "");
+ 	return rv;
+ }
+ 
+-#ifndef HAVE_STRNDUP
+-char * strndup(const char *, size_t);
+-
+-char *
+-strndup(const char *str, size_t n)
+-{
+-	size_t len;
+-	char *copy;
+-
+-	for (len = 0; len < n && str[len]; len++)
+-		continue;
+-	if ((copy = malloc(len + 1)) == NULL)
+-		return NULL;
+-	(void)memcpy(copy, str, len);
+-	copy[len] = '\0';
+-	return copy;
+-}
+-#endif /* HAVE_STRNDUP */
+-
+ private int32_t
+ mprint(struct magic_set *ms, struct magic *m)
+ {
+@@ -630,19 +624,18 @@
+ 		t = ms->offset + sizeof(double);
+   		break;
+ 
+-	case FILE_SEARCH:
+ 	case FILE_REGEX: {
+ 		char *cp;
+ 		int rval;
+ 
+-		cp = strndup((const char *)ms->search.s, ms->search.rm_len);
++		cp = estrndup((const char *)ms->search.s, ms->search.rm_len);
+ 		if (cp == NULL) {
+ 			file_oomem(ms, ms->search.rm_len);
+ 			return -1;
+ 		}
+ 		rval = file_printf(ms, F(ms, m, "%s"),
+ 		    file_printable(sbuf, sizeof(sbuf), cp));
+-		free(cp);
++		efree(cp);
+ 
+ 		if (rval == -1)
+ 			return -1;
+@@ -654,6 +647,15 @@
+ 		break;
+ 	}
+ 
++	case FILE_SEARCH:
++		if (file_printf(ms, F(ms, m, "%s"), m->value.s) == -1)
++			return -1;
++		if ((m->str_flags & REGEX_OFFSET_START))
++			t = ms->search.offset;
++		else
++			t = ms->search.offset + m->vallen;
++		break;
++
+ 	case FILE_DEFAULT:
+ 	case FILE_CLEAR:
+ 	  	if (file_printf(ms, "%s", m->desc) == -1)
+@@ -879,16 +881,16 @@
+ 	if (m->num_mask) \
+ 		switch (m->mask_op & FILE_OPS_MASK) { \
+ 		case FILE_OPADD: \
+-			p->fld += cast m->num_mask; \
++			p->fld += cast (int64_t)m->num_mask; \
+ 			break; \
+ 		case FILE_OPMINUS: \
+-			p->fld -= cast m->num_mask; \
++			p->fld -= cast (int64_t)m->num_mask; \
+ 			break; \
+ 		case FILE_OPMULTIPLY: \
+-			p->fld *= cast m->num_mask; \
++			p->fld *= cast (int64_t)m->num_mask; \
+ 			break; \
+ 		case FILE_OPDIVIDE: \
+-			p->fld /= cast m->num_mask; \
++			p->fld /= cast (int64_t)m->num_mask; \
+ 			break; \
+ 		} \
+ 
+@@ -1095,17 +1097,26 @@
+ 				return 0;
+ 			}
+ 
+-			if (m->str_flags & REGEX_LINE_COUNT) {
+-				linecnt = m->str_range;
+-				bytecnt = linecnt * 80;
+-			} else {
+-				linecnt = 0;
+-				bytecnt = m->str_range;
+-			}
++			/* bytecnt checks are to be kept for PHP, see cve-2014-3538.
++			 PCRE might get stuck if the input buffer is too big. */
++			linecnt = m->str_range;
++			bytecnt = linecnt * 80;
+ 
+-			if (bytecnt == 0 || bytecnt > nbytes - offset)
+-				bytecnt = nbytes - offset;
++			if (bytecnt == 0) {
++				bytecnt = 1 << 14;
++			}
+ 
++			if (bytecnt > nbytes) {
++				bytecnt = nbytes;
++			}
++			if (offset > bytecnt) {
++				offset = bytecnt;
++			}
++			if (s == NULL) {
++				ms->search.s_len = 0;
++				ms->search.s = NULL;
++				return 0;
++			}
+ 			buf = RCAST(const char *, s) + offset;
+ 			end = last = RCAST(const char *, s) + bytecnt;
+ 			/* mget() guarantees buf <= last */
+@@ -1221,9 +1232,6 @@
+ 		    m->type, m->flag, offset, o, nbytes,
+ 		    indir_level, *name_count);
+ 		mdebug(offset, (char *)(void *)p, sizeof(union VALUETYPE));
+-#ifndef COMPILE_ONLY
+-		file_mdump(m);
+-#endif
+ 	}
+ 
+ 	if (m->flag & INDIR) {
+@@ -1593,9 +1601,6 @@
+ 		if ((ms->flags & MAGIC_DEBUG) != 0) {
+ 			mdebug(offset, (char *)(void *)p,
+ 			    sizeof(union VALUETYPE));
+-#ifndef COMPILE_ONLY
+-			file_mdump(m);
+-#endif
+ 		}
+ 	}
+ 
+@@ -1676,15 +1681,15 @@
+ 		if (rv == 1) {
+ 			if ((ms->flags & (MAGIC_MIME|MAGIC_APPLE)) == 0 &&
+ 			    file_printf(ms, F(ms, m, "%u"), offset) == -1) {
+-				free(rbuf);
++				if (rbuf) efree(rbuf);
+ 				return -1;
+ 			}
+ 			if (file_printf(ms, "%s", rbuf) == -1) {
+-				free(rbuf);
++				if (rbuf) efree(rbuf);
+ 				return -1;
+ 			}
+ 		}
+-		free(rbuf);
++		if (rbuf) efree(rbuf);
+ 		return rv;
+ 
+ 	case FILE_USE:
+@@ -1799,6 +1804,41 @@
+ 	return file_strncmp(a, b, len, flags);
+ }
+ 
++public void
++convert_libmagic_pattern(zval *pattern, char *val, int len, int options)
++{
++	int i, j=0;
++	zend_string *t;
++
++	t = zend_string_alloc(len * 2 + 4, 0);
++
++	ZSTR_VAL(t)[j++] = '~';
++
++	for (i = 0; i < len; i++, j++) {
++		switch (val[i]) {
++			case '~':
++				ZSTR_VAL(t)[j++] = '\\';
++				ZSTR_VAL(t)[j] = '~';
++				break;
++			default:
++				ZSTR_VAL(t)[j] = val[i];
++				break;
++		}
++	}
++	ZSTR_VAL(t)[j++] = '~';
++
++	if (options & PCRE_CASELESS) 
++		ZSTR_VAL(t)[j++] = 'i';
++
++	if (options & PCRE_MULTILINE)
++		ZSTR_VAL(t)[j++] = 'm';
++
++	ZSTR_VAL(t)[j]='\0';
++	ZSTR_LEN(t) = j;
++
++	ZVAL_NEW_STR(pattern, t);
++}
++
+ private int
+ magiccheck(struct magic_set *ms, struct magic *m)
+ {
+@@ -1959,73 +1999,77 @@
+ 		break;
+ 	}
+ 	case FILE_REGEX: {
+-		int rc;
+-		file_regex_t rx;
+-		const char *search;
++		zval pattern;
++		int options = 0;
++		pcre_cache_entry *pce;
+ 
+-		if (ms->search.s == NULL)
+-			return 0;
++		options |= PCRE_MULTILINE;
+ 
+-		l = 0;
+-		rc = file_regcomp(&rx, m->value.s,
+-		    REG_EXTENDED|REG_NEWLINE|
+-		    ((m->str_flags & STRING_IGNORE_CASE) ? REG_ICASE : 0));
+-		if (rc) {
+-			file_regerror(&rx, rc, ms);
+-			v = (uint64_t)-1;
++		if (m->str_flags & STRING_IGNORE_CASE) {
++			options |= PCRE_CASELESS;
++		}
++
++		convert_libmagic_pattern(&pattern, (char *)m->value.s, m->vallen, options);
++
++		l = v = 0;
++		if ((pce = pcre_get_compiled_regex_cache(Z_STR(pattern))) == NULL) {
++			zval_ptr_dtor(&pattern);
++			return -1;
+ 		} else {
+-			regmatch_t pmatch[1];
+-			size_t slen = ms->search.s_len;
+-#ifndef REG_STARTEND
+-#define	REG_STARTEND	0
+-			char *copy;
+-			if (slen != 0) {
+-			    copy = malloc(slen);
+-			    if (copy == NULL)  {
+-				file_error(ms, errno,
+-				    "can't allocate %" SIZE_T_FORMAT "u bytes",
+-				    slen);
+-				return -1;
+-			    }
+-			    memcpy(copy, ms->search.s, slen);
+-			    copy[--slen] = '\0';
+-			    search = copy;
++			/* pce now contains the compiled regex */
++			zval retval;
++			zval subpats;
++			char *haystack;
++
++			ZVAL_NULL(&retval);
++			ZVAL_NULL(&subpats);
++
++			/* Cut the search len from haystack, equals to REG_STARTEND */
++			haystack = estrndup(ms->search.s, ms->search.s_len);
++
++			/* match v = 0, no match v = 1 */
++			php_pcre_match_impl(pce, haystack, ms->search.s_len, &retval, &subpats, 0, 1, PREG_OFFSET_CAPTURE, 0);
++			/* Free haystack */
++			efree(haystack);
++
++			if (Z_LVAL(retval) < 0) {
++				zval_ptr_dtor(&subpats);
++				zval_ptr_dtor(&pattern);
++				return -1;
++			} else if ((Z_LVAL(retval) > 0) && (Z_TYPE(subpats) == IS_ARRAY)) {
++				/* Need to fetch global match which equals pmatch[0] */
++				zval *pzval;
++				HashTable *ht = Z_ARRVAL(subpats);
++				if ((pzval = zend_hash_index_find(ht, 0)) != NULL && Z_TYPE_P(pzval) == IS_ARRAY) {
++					/* If everything goes according to the master plan
++					   tmpcopy now contains two elements:
++					   0 = the match
++					   1 = starting position of the match */
++					zval *match, *offset;
++					if ((match = zend_hash_index_find(Z_ARRVAL_P(pzval), 0)) &&
++							(offset = zend_hash_index_find(Z_ARRVAL_P(pzval), 1))) {
++						if (Z_TYPE_P(match) != IS_STRING && Z_TYPE_P(offset) != IS_LONG) {
++							goto error_out;
++						}
++						ms->search.s += Z_LVAL_P(offset); /* this is where the match starts */
++						ms->search.offset += Z_LVAL_P(offset); /* this is where the match starts as size_t */
++						ms->search.rm_len = Z_STRLEN_P(match) /* This is the length of the matched pattern */;
++						v = 0;
++					} else {
++						goto error_out;
++					}
++				} else {
++error_out:
++					zval_ptr_dtor(&subpats);
++					zval_ptr_dtor(&pattern);
++					return -1;
++				}
+ 			} else {
+-			    search = ms->search.s;
+-			    copy = NULL;
+-			}
+-#else
+-			search = ms->search.s;
+-			pmatch[0].rm_so = 0;
+-			pmatch[0].rm_eo = slen;
+-#endif
+-			rc = file_regexec(&rx, (const char *)search,
+-			    1, pmatch, REG_STARTEND);
+-#if REG_STARTEND == 0
+-			free(copy);
+-#endif
+-			switch (rc) {
+-			case 0:
+-				ms->search.s += (int)pmatch[0].rm_so;
+-				ms->search.offset += (size_t)pmatch[0].rm_so;
+-				ms->search.rm_len =
+-				    (size_t)(pmatch[0].rm_eo - pmatch[0].rm_so);
+-				v = 0;
+-				break;
+-
+-			case REG_NOMATCH:
+ 				v = 1;
+-				break;
+-
+-			default:
+-				file_regerror(&rx, rc, ms);
+-				v = (uint64_t)-1;
+-				break;
+ 			}
++			zval_ptr_dtor(&subpats);
++			zval_ptr_dtor(&pattern);
+ 		}
+-		file_regfree(&rx);
+-		if (v == (uint64_t)-1)
+-			return -1;
+ 		break;
+ 	}
+ 	case FILE_INDIRECT:
+diff -u libmagic.orig/strcasestr.c libmagic/strcasestr.c
+--- libmagic.orig/strcasestr.c	2017-04-10 11:41:09.737268025 +0800
++++ libmagic/strcasestr.c	2017-04-10 11:41:14.415268021 +0800
+@@ -39,6 +39,8 @@
+ 
+ #include "file.h"
+ 
++#include "php_stdint.h"
++
+ #include <assert.h>
+ #include <ctype.h>
+ #include <string.h>
