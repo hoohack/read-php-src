@@ -4,67 +4,67 @@ php-5.4
 
 *   array相关
 
-*   [array_keys](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2459)
+*   [array_keys](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2470)
 
-*   [array_unique](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2813)
+*   [array_unique](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2827)
 
-*   [array_flip](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2718)
+*   [array_flip](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2732)
 
-*   [array_push](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1940)
+*   [array_push](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L1947)
 
-*   [array_pop](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2056)
+*   [array_pop](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2054)
 
-*   [array_unshift](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2072)
+*   [array_unshift](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2070)
 
-*   [array_shift](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2064)
+*   [array_shift](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2062)
 
-*   [php_splice](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1845)
+*   [php_splice](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L1852)
 
-*   [_phpi_pop](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1987)
+*   [_phpi_pop](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L1986)
 
-*   [count](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L307)
+*   [count](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L305)
 
-*   [php_count_recursive](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L274)
+*   [php_count_recursive](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L274)
 
-*   [array_values](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2539)
+*   [array_values](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2543)
 
-*   [array_key_exists](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L4421)
+*   [array_key_exists](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L4428)
 
-*   [in_array](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1255)
+*   [in_array](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L1253)
 
-*   [array_search](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1263)
+*   [array_search](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L1261)
 
-*   [php_search_array](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L1203)
+*   [php_search_array](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L1203)
 
-*   [array_slice](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2184)
+*   [array_slice](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2186)
 
-*   [array_splice](https://github.com/hoohack/read-php-src/blob/master/ext/standard/array.c#L2102)
+*   [array_splice](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/array.c#L2102)
 
 *   字符串相关
 
-*   [strlen](https://github.com/hoohack/read-php-src/blob/master/Zend/zend_builtin_functions.c#L478)
+*   [strlen](https://github.com/hoohack/read-php-src/blob/master/php-5.4/Zend/zend_builtin_functions.c#L507)
 
-*   [strpos](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1840)
+*   [strpos](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1842)
 
-*   [stripos](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1891)
+*   [stripos](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1895)
 
-*   [strstr](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1789)
+*   [strstr](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1793)
 
-*   [stristr](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1732)
+*   [stristr](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1736)
 
-*   [explode](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1104)
+*   [explode](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1104)
 
-*   [implode](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1245)
+*   [implode](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1245)
 
-*   [trim](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L794)
+*   [trim](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L788)
 
-*   [rtrim](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L794)
+*   [rtrim](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L788)
 
-*   [ltrim](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L794)
+*   [ltrim](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L788)
 
-*   [strtolower](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1436)
+*   [strtolower](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1434)
 
-*   [strtoupper](https://github.com/hoohack/read-php-src/blob/master/ext/standard/string.c#L1400)
+*   [strtoupper](https://github.com/hoohack/read-php-src/blob/master/php-5.4/ext/standard/string.c#L1398)
 
 *   相关文章介绍
 
