@@ -308,6 +308,7 @@ extern "C" {
 Exactly one of IEEE_8087, IEEE_MC68k, VAX, or IBM should be defined.
 #endif
 
+// U 定义
 typedef union { double d; ULong L[2]; } U;
 
 #ifdef IEEE_8087
@@ -3791,6 +3792,7 @@ zend_dtoa
 		}
 #endif
 
+	// 把浮点数赋值到u.d，U是一个联合体，定义见本文件311行
 	u.d = dd;
 	if (word0(&u) & Sign_bit) {
 		/* set sign for everything, including 0's and NaNs */
@@ -3838,6 +3840,7 @@ zend_dtoa
 		}
 #endif
 
+	// 转成bigint
 	b = d2b(&u, &be, &bbits);
 #ifdef Sudden_Underflow
 	i = (int)(word0(&u) >> Exp_shift1 & (Exp_mask>>Exp_shift1));

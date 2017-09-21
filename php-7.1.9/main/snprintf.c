@@ -93,6 +93,7 @@ static char * __cvt(double value, int ndigit, int *decpt, int *sign, int fmode, 
 			return(s);
 		}
 	} else {
+		// 最终调用zend_dtoa实现转换浮点数为科学计数法
 		p = zend_dtoa(value, fmode + 2, ndigit, decpt, sign, &rve);
 		if (*decpt == 9999) {
 			/* Infinity or Nan, convert to inf or nan like printf */
@@ -392,6 +393,7 @@ PHPAPI char * php_conv_fp(register char format, register double num,
 	if (format == 'F') {
 		p_orig = p = php_fcvt(num, precision, &decimal_point, is_negative);
 	} else {						/* either e or E format */
+		// 用e/E格式化，调用php_ecvt
 		p_orig = p = php_ecvt(num, precision + 1, &decimal_point, is_negative);
 	}
 

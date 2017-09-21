@@ -1116,13 +1116,17 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
 	int count = 0;
 	int is_negative=0;
 
+	// 负数转换
 	if (d < 0) {
 		is_negative = 1;
 		d = -d;
 	}
 
+	// dec代表小数点保留的数字数量，不能小于0
 	dec = MAX(0, dec);
+	// 对浮点数进行四舍五入，PHP_ROUND_HALF_UP向上取整
 	d = _php_math_round(d, dec, PHP_ROUND_HALF_UP);
+	// 将数字d转成字符串格式赋值给tmpbuf 详情见main/spprintf.c
 	tmpbuf = strpprintf(0, "%.*F", dec, d);
 	if (tmpbuf == NULL) {
 		return NULL;
@@ -1130,6 +1134,7 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
 		return tmpbuf;
 	}
 
+	// 计算需要分配的字符串长度 start
 	/* find decimal point, if expected */
 	if (dec) {
 		dp = strpbrk(ZSTR_VAL(tmpbuf), ".,");
@@ -1164,7 +1169,8 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
 	if (is_negative) {
 		reslen++;
 	}
-	res = zend_string_alloc(reslen, 0);
+	// 计算需要分配的字符串长度 end
+	res = zend_string_alloc(reslen, 0); // 函数返回的结果
 
 	s = ZSTR_VAL(tmpbuf) + ZSTR_LEN(tmpbuf) - 1;
 	t = ZSTR_VAL(res) + reslen;
@@ -1177,11 +1183,13 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
 		size_t declen = (dp ? s - dp : 0);
 		size_t topad = dec > declen ? dec - declen : 0;
 
+		// 如果保留的小数数量大于sprintf函数返回的小数数量，用0填充
 		/* pad with '0's */
 		while (topad--) {
 			*t-- = '0';
 		}
 
+		// 拷贝小数点后的值
 		if (dp) {
 			s -= declen + 1; /* +1 to skip the point */
 			t -= declen;
@@ -1199,6 +1207,7 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
 
 	/* copy the numbers before the decimal point, adding thousand
 	 * separator every three digits */
+	// 拷贝小数点前面的数字，并在每三位用千位符分隔
 	while (s >= ZSTR_VAL(tmpbuf)) {
 		*t-- = *s--;
 		if (thousand_sep && (++count%3)==0 && s >= ZSTR_VAL(tmpbuf)) {
@@ -1213,7 +1222,7 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
 	}
 
 	ZSTR_LEN(res) = reslen;
-	zend_string_release(tmpbuf);
+	zend_string_release(tmpbuf); // 释放临时变量
 	return res;
 }
 
@@ -1221,14 +1230,16 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
    Formats a number with grouped thousands */
 PHP_FUNCTION(number_format)
 {
+	// 期望number_format的第一个参数num是double类型的，在词法阶段已经对字面量常量做了转换
 	double num;
 	zend_long dec = 0;
 	char *thousand_sep = NULL, *dec_point = NULL;
 	char thousand_sep_chr = ',', dec_point_chr = '.';
 	size_t thousand_sep_len = 0, dec_point_len = 0;
 
+	// 解析参数
 	ZEND_PARSE_PARAMETERS_START(1, 4)
-		Z_PARAM_DOUBLE(num)
+		Z_PARAM_DOUBLE(num)// 拿到double类型的num
 		Z_PARAM_OPTIONAL
 		Z_PARAM_LONG(dec)
 		Z_PARAM_STRING_EX(dec_point, dec_point_len, 1, 0)
@@ -1252,7 +1263,8 @@ PHP_FUNCTION(number_format)
 			thousand_sep = &thousand_sep_chr;
 			thousand_sep_len = 1;
 		}
-
+		// _php_math_number_format_ex
+		// 真正处理的函数，在本文件第1107行
 		RETVAL_STR(_php_math_number_format_ex(num, (int)dec,
 				dec_point, dec_point_len, thousand_sep, thousand_sep_len));
 		break;

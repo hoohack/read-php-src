@@ -645,6 +645,7 @@ static void xbuf_format_converter(void *xbuf, zend_bool is_char, const char *fmt
 						}
 #endif
 #endif
+						// 这里调用转换浮点数为科学计数法
 						s = php_conv_fp((*fmt == 'f')?'F':*fmt, fp_num, alternate_form,
 						 (adjust_precision == NO) ? FLOAT_DIGITS : precision,
 						 (*fmt == 'f')?LCONV_DECIMAL_POINT:'.',
