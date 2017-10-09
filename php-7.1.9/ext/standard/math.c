@@ -1226,6 +1226,14 @@ PHPAPI zend_string *_php_math_number_format_ex(double d, int dec, char *dec_poin
 	return res;
 }
 
+// number
+// 你要格式化的数字
+// num_decimal_places
+// 要保留的小数位数
+// dec_separator
+// 指定小数点显示的字符
+// thousands_separator
+// 指定千位分隔符显示的字符
 /* {{{ proto string number_format(float number [, int num_decimal_places [, string dec_separator, string thousands_separator]])
    Formats a number with grouped thousands */
 PHP_FUNCTION(number_format)

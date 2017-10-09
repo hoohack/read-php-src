@@ -1107,6 +1107,7 @@ restart:
 
 /*!re2c
 re2c:yyfill:check = 0;
+// 纯数字字面量，用LNUM标识
 LNUM	[0-9]+
 DNUM	([0-9]*"."[0-9]+)|([0-9]+"."[0-9]*)
 EXPONENT_DNUM	(({LNUM}|{DNUM})[eE][+-]?{LNUM})
@@ -1644,10 +1645,12 @@ NEWLINE ("\r"|"\n"|"\r\n")
 	}
 }
 
+// 纯数字的处理
 <ST_IN_SCRIPTING>{LNUM} {
 	char *end;
 	if (yyleng < MAX_LENGTH_OF_LONG - 1) { /* Won't overflow */
 		errno = 0;
+		// 不会溢出，直接用zval_Long类型保存
 		ZVAL_LONG(zendlval, ZEND_STRTOL(yytext, &end, 0));
 		/* This isn't an assert, we need to ensure 019 isn't valid octal
 		 * Because the lexing itself doesn't do that for us
@@ -1659,7 +1662,9 @@ NEWLINE ("\r"|"\n"|"\r\n")
 		}
 	} else {
 		errno = 0;
+		// 如果溢出了，先用long保存，看是否能保存成功
 		ZVAL_LONG(zendlval, ZEND_STRTOL(yytext, &end, 0));
+		// 溢出了，截断并转成double类型保存
 		if (errno == ERANGE) { /* Overflow */
 			errno = 0;
 			if (yytext[0] == '0') { /* octal overflow */
